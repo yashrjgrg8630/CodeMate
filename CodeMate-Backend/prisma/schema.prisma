@@ -1,0 +1,290 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum HistoryStatus {
+  analyzed
+  optimized
+  converted
+  benchmarked
+}
+
+enum ActivityKind {
+  ANALYSIS
+  OPTIMIZATION
+  CONVERSION
+  BENCHMARK
+  CAREER
+  INTERVIEW_ANSWER
+  INTERVIEW_REPORT
+  ROADMAP_PROGRESS
+  VERIFICATION
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String?
+  name          String
+  avatarUrl     String?
+  oauthProvider String?
+  oauthSubject  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  refreshTokens     RefreshToken[]
+  analyses          Analysis[]
+  optimizations     Optimization[]
+  conversions       Conversion[]
+  benchmarks        Benchmark[]
+  historyItems      HistoryItem[]
+  jobAnalyses       JobAnalysis[]
+  interviewSessions InterviewSession[]
+  roadmaps          Roadmap[]
+  activityEvents    ActivityEvent[]
+  aiCalls           AiCallLog[]
+
+  @@unique([oauthProvider, oauthSubject])
+}
+
+/// Opaque refresh tokens, stored hashed. `familyId` groups a rotation chain so a
+/// replayed (already-rotated) token can revoke the whole chain.
+model RefreshToken {
+  id           String    @id @default(cuid())
+  userId       String
+  familyId     String
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String?
+  createdAt    DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+model Analysis {
+  id        String   @id @default(cuid())
+  userId    String
+  language  String
+  code      String
+  result    Json
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model Optimization {
+  id            String   @id @default(cuid())
+  userId        String
+  language      String
+  code          String
+  original      Json
+  recommendedId String
+  explanation   String
+  createdAt     DateTime @default(now())
+
+  user       User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  candidates OptimizationCandidate[]
+  benchmarks Benchmark[]
+
+  @@index([userId, createdAt])
+}
+
+model OptimizationCandidate {
+  id             String   @id
+  optimizationId String
+  position       Int
+  name           String
+  approach       String
+  timeComplexity  String
+  spaceComplexity String
+  readability    Int
+  confidence     Int
+  improvement    Int
+  rationale      String
+  code           String
+  verifiedPassed Int?
+  verifiedTotal  Int?
+  verifiedAt     DateTime?
+
+  optimization Optimization @relation(fields: [optimizationId], references: [id], onDelete: Cascade)
+
+  @@index([optimizationId])
+}
+
+model Conversion {
+  id             String   @id @default(cuid())
+  userId         String
+  sourceLanguage String
+  targetLanguage String
+  optimize       Boolean
+  sourceCode     String
+  result         Json
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model Benchmark {
+  id             String   @id @default(cuid())
+  userId         String
+  optimizationId String
+  candidateId    String
+  result         Json
+  createdAt      DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  optimization Optimization @relation(fields: [optimizationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+/// One row per entry on the History page. `payload` holds the CodeHistoryItem
+/// fields that are not first-class columns.
+model HistoryItem {
+  id        String        @id @default(cuid())
+  userId    String
+  type      HistoryStatus
+  title     String
+  language  String
+  payload   Json
+  createdAt DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model JobAnalysis {
+  id             String   @id @default(cuid())
+  userId         String
+  inputHash      String
+  jobDescription String
+  resumeText     String?
+  result         Json
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, inputHash])
+  @@index([userId, createdAt])
+}
+
+model InterviewSession {
+  id          String    @id @default(cuid())
+  userId      String
+  role        String
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  overall     Int?
+
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questions InterviewQuestion[]
+
+  @@index([userId, startedAt])
+}
+
+model InterviewQuestion {
+  id         String @id
+  sessionId  String
+  position   Int
+  topic      String
+  difficulty String
+  prompt     String
+  followUp   String
+
+  session InterviewSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  answer  InterviewAnswer?
+
+  @@index([sessionId])
+}
+
+model InterviewAnswer {
+  id         String   @id @default(cuid())
+  questionId String   @unique
+  answer     String
+  code       String
+  score      Int
+  feedback   String
+  createdAt  DateTime @default(now())
+
+  question InterviewQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+model Roadmap {
+  id             String   @id @default(cuid())
+  userId         String
+  targetRole     String
+  level          String
+  weeks          Int
+  payload        Json
+  createdAt      DateTime @default(now())
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  completions RoadmapProblem[]
+
+  @@index([userId, createdAt])
+}
+
+model RoadmapProblem {
+  roadmapId   String
+  problemId   String
+  topicName   String
+  completed   Boolean   @default(false)
+  inRevision  Boolean   @default(false)
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  roadmap Roadmap @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+
+  @@id([roadmapId, problemId])
+}
+
+/// Single source of truth for Progress and Dashboard aggregation.
+model ActivityEvent {
+  id        String       @id @default(cuid())
+  userId    String
+  kind      ActivityKind
+  topic     String?
+  score     Int?
+  meta      Json?
+  createdAt DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, kind])
+}
+
+/// One row per Gemini call: observability (model, tokens, latency, cost) and
+/// the source for the per-user daily AI quota.
+model AiCallLog {
+  id           String   @id @default(cuid())
+  userId       String?
+  feature      String
+  model        String
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  latencyMs    Int
+  costUsd      Float    @default(0)
+  ok           Boolean
+  errorCode    String?
+  createdAt    DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+}
