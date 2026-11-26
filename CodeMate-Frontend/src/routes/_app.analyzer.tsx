@@ -108,6 +108,10 @@ function AnalyzerPage() {
                   const nextLanguage = LANGUAGES.find((item) => item.id === value)?.id;
                   if (!nextLanguage) return;
                   setLanguage(nextLanguage);
+                  const isSampleCode = Object.values(SAMPLE_CODE).includes(code);
+                  if (!code.trim() || isSampleCode) {
+                    setCode(SAMPLE_CODE[nextLanguage]);
+                  }
                   if (!analysis.isIdle) analysis.reset();
                 }}
               >

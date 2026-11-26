@@ -259,6 +259,10 @@ function OptimizerPage() {
     const nextLanguage = LANGUAGES.find((item) => item.id === value)?.id;
     if (!nextLanguage || nextLanguage === language) return;
     setLanguage(nextLanguage);
+    const isSampleCode = Object.values(SAMPLE_CODE).includes(code);
+    if (!code.trim() || isSampleCode) {
+      setCode(SAMPLE_CODE[nextLanguage]);
+    }
     resetResults();
     setAppliedNotice(null);
   }
