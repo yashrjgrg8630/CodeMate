@@ -1,4 +1,4 @@
-import { ApiError, apiRequest } from "./client";
+import { ApiError, apiRequest, getApiBaseUrl } from "./client";
 
 export interface CurrentUser {
   id: string;
@@ -35,6 +35,16 @@ export async function signup(input: {
     body: JSON.stringify(input),
   });
   return response.user;
+}
+
+export async function getGoogleOAuthStatus(): Promise<{ enabled: boolean }> {
+  return apiRequest<{ enabled: boolean }>("/api/auth/google/status");
+}
+
+export function getGoogleOAuthUrl(returnTo: string): string {
+  const url = new URL("/api/auth/google", getApiBaseUrl());
+  url.searchParams.set("returnTo", returnTo);
+  return url.toString();
 }
 
 export async function logout(): Promise<void> {

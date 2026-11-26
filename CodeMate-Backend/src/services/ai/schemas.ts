@@ -1,7 +1,13 @@
 /** Schemas for what the *model* returns. The server maps these to the public domain types
  *  (assigning ids, clamping scores, deriving levels) so model output is never trusted verbatim. */
 import { z } from "zod";
-import { difficultySchema, prioritySchema, severitySchema, skillCategorySchema } from "../../schemas/domain.js";
+import {
+  difficultySchema,
+  prioritySchema,
+  severitySchema,
+  skillCategorySchema,
+  supportedCodingPlatformSchema,
+} from "../../schemas/domain.js";
 
 const pct = z.number().int().min(0).max(100);
 const short = z.string().min(1).max(200);
@@ -12,18 +18,29 @@ const complexity = z.object({
 });
 
 export const aiAnalysisSchema = z.object({
-  codeHealth: pct.describe("Overall quality 0-100 considering correctness, robustness, readability, efficiency"),
+  codeHealth: pct.describe(
+    "Overall quality 0-100 considering correctness, robustness, readability, efficiency",
+  ),
   complexity,
   pattern: z.object({
-    name: short.describe("Algorithmic technique, e.g. Brute Force, Sliding Window, Dynamic Programming"),
-    category: short.describe("Problem family, e.g. Array Traversal, Graph Search"),
+    name: short.describe(
+      "Algorithmic technique, e.g. Brute Force, Sliding Window, Dynamic Programming",
+    ),
+    category: short.describe(
+      "Problem family, e.g. Array Traversal, Graph Search",
+    ),
     confidence: pct,
     description: para,
   }),
   bugs: z
     .array(
       z.object({
-        line: z.number().int().min(1).max(100000).describe("1-based line number in the submitted code"),
+        line: z
+          .number()
+          .int()
+          .min(1)
+          .max(100000)
+          .describe("1-based line number in the submitted code"),
         title: short,
         explanation: para,
         severity: severitySchema,
@@ -45,18 +62,35 @@ export const aiOptimizationSchema = z.object({
   candidates: z
     .array(
       z.object({
-        approach: short.describe("Technique name, e.g. Sliding Window, HashMap, Two Pointer"),
+        approach: short.describe(
+          "Technique name, e.g. Sliding Window, HashMap, Two Pointer",
+        ),
         complexity,
         readability: pct,
-        confidence: pct.describe("Confidence this candidate is behaviourally equivalent to the original"),
-        improvement: pct.describe("Estimated runtime improvement versus the original, 0-100"),
+        confidence: pct.describe(
+          "Confidence this candidate is behaviourally equivalent to the original",
+        ),
+        improvement: pct.describe(
+          "Estimated runtime improvement versus the original, 0-100",
+        ),
         rationale: para,
-        code: z.string().min(1).max(20000).describe("Complete, runnable implementation in the SAME language as the input"),
+        code: z
+          .string()
+          .min(1)
+          .max(20000)
+          .describe(
+            "Complete, runnable implementation in the SAME language as the input",
+          ),
       }),
     )
     .min(3)
     .max(4),
-  recommendedIndex: z.number().int().min(0).max(3).describe("0-based index into candidates of the best overall candidate"),
+  recommendedIndex: z
+    .number()
+    .int()
+    .min(0)
+    .max(3)
+    .describe("0-based index into candidates of the best overall candidate"),
   explanation: z.string().min(1).max(1500),
 });
 export type AiOptimization = z.infer<typeof aiOptimizationSchema>;
@@ -85,7 +119,26 @@ const aiSkill = z.object({
   name: z.string().min(1).max(60),
   category: skillCategorySchema,
   required: pct.describe("How strongly the job requires this skill, 0-100"),
-  current: pct.describe("Evidence of this skill in the resume 0-100; 0 when absent or when no resume was supplied"),
+  current: pct.describe(
+    "Evidence of this skill in the resume 0-100; 0 when absent or when no resume was supplied",
+  ),
+});
+
+const aiPracticeProblem = z.object({
+  title: z.string().min(1).max(100).describe("Exact, real problem title"),
+  platform: supportedCodingPlatformSchema,
+  topic: z
+    .string()
+    .min(1)
+    .max(120)
+    .describe("One of the focus topics for this roadmap phase"),
+  difficulty: difficultySchema,
+  pattern: z.string().min(1).max(80),
+  practiceGoal: z.string().min(1).max(500),
+  url: z
+    .string()
+    .optional()
+    .describe("Official canonical problem URL, only when known exactly"),
 });
 
 const aiJobBase = {
@@ -107,11 +160,22 @@ export const aiJobWithResumeSchema = z.object({
   roadmap: z.object({
     verdict: z.string().min(1).max(400),
     radar: z
-      .array(z.object({ skill: z.string().min(1).max(40), resume: pct, required: pct }))
+      .array(
+        z.object({
+          skill: z.string().min(1).max(40),
+          resume: pct,
+          required: pct,
+        }),
+      )
       .min(5)
       .max(8),
     categoryFocus: z
-      .array(z.object({ name: z.string().min(1).max(50), weight: z.number().min(0).max(100) }))
+      .array(
+        z.object({
+          name: z.string().min(1).max(50),
+          weight: z.number().min(0).max(100),
+        }),
+      )
       .min(3)
       .max(7),
     phases: z
@@ -122,6 +186,7 @@ export const aiJobWithResumeSchema = z.object({
           intensity: pct,
           focus: z.array(z.string().min(1).max(120)).min(2).max(5),
           outcome: z.string().min(1).max(300),
+          problems: z.array(aiPracticeProblem).min(2).max(5),
         }),
       )
       .min(3)
@@ -165,39 +230,117 @@ export const aiReportSchema = z.object({
   recommendations: z.array(z.string().min(1).max(300)).min(3).max(5),
 });
 
+export function aiLiveInterviewReportSchema(questionCount: number) {
+  return z.object({
+    scores: z.object({
+      technicalKnowledge: pct,
+      problemSolving: pct,
+      communication: pct,
+    }),
+    responseFeedback: z
+      .array(
+        z.object({
+          score: pct,
+          feedback: z.string().min(1).max(1_200),
+        }),
+      )
+      .length(questionCount),
+    strengths: z.array(z.string().min(1).max(300)).min(1).max(5),
+    areasToImprove: z.array(z.string().min(1).max(300)).min(1).max(5),
+    suggestedTopics: z.array(z.string().min(1).max(120)).min(1).max(8),
+  });
+}
+
 export const aiRoadmapSchema = z.object({
   topics: z
     .array(
       z.object({
-        name: z.string().min(1).max(60),
+        name: z.string().trim().min(2).max(100).describe("Personalized stage title"),
+        description: z
+          .string()
+          .min(1)
+          .max(600)
+          .describe("Concise, role-specific purpose for this stage"),
+        keyTopics: z
+          .array(z.string().min(1).max(100))
+          .min(2)
+          .max(8)
+          .describe("Specific concepts taught by this stage"),
+        tasks: z
+          .array(
+            z.object({
+              title: z.string().min(1).max(100),
+              description: z.string().min(1).max(500),
+              estimatedMinutes: z.number().int().min(5).max(1200),
+              deliverable: z.string().min(1).max(200).optional(),
+            }),
+          )
+          .min(1)
+          .max(6)
+          .describe("Concrete preparation work with honest effort estimates"),
         priority: prioritySchema,
         difficulty: difficultySchema,
         pattern: z.string().min(1).max(120),
         problems: z
           .array(
             z.object({
-              title: z.string().min(1).max(100).describe("Exact, well-known problem title"),
-              platform: z.enum(["LeetCode", "GeeksforGeeks", "HackerRank", "Codeforces", "Other"]),
+              title: z
+                .string()
+                .min(1)
+                .max(100)
+                .describe("Exact, well-known problem title"),
+              platform: supportedCodingPlatformSchema,
+              topic: z.string().min(1).max(100),
+              practiceGoal: z.string().min(1).max(300),
+              url: z
+                .string()
+                .optional()
+                .describe(
+                  "Official canonical problem URL, only when known exactly",
+                ),
+              estimatedMinutes: z.number().int().min(5).max(240).optional(),
               difficulty: difficultySchema,
               pattern: z.string().min(1).max(80),
             }),
           )
-          .min(3)
-          .max(6),
+          .min(1)
+          .max(8),
       }),
     )
-    .length(8),
+    .min(1)
+    .max(16)
+    .describe(
+      "A role-specific sequence with the exact number of stages requested by the user",
+    ),
   resources: z
     .array(
       z.object({
-        title: z.string().min(1).max(120).describe("Lesson/course title for the topic"),
-        channel: z.string().min(1).max(80).describe("Well-known creator, course or publisher"),
-        topic: z.string().min(1).max(60),
-        duration: z.string().min(1).max(30).describe('Estimated length, e.g. "~45 min"'),
+        title: z
+          .string()
+          .min(1)
+          .max(120)
+          .describe("Lesson/course title for the topic"),
+        channel: z
+          .string()
+          .min(1)
+          .max(80)
+          .describe("Well-known creator, course or publisher"),
+        topic: z
+          .string()
+          .trim()
+          .min(2)
+          .max(100)
+          .describe("Exact generated stage title"),
+        duration: z
+          .string()
+          .min(1)
+          .max(30)
+          .describe('Estimated length, e.g. "~45 min"'),
       }),
     )
-    .min(4)
-    .max(8),
+    .min(1)
+    .max(16)
+    .describe("One real, clearly named learning resource per generated stage"),
 });
 export type AiRoadmap = z.infer<typeof aiRoadmapSchema>;
 
@@ -208,7 +351,7 @@ export const execVerificationSchema = z.object({
 });
 
 const seriesPoint = z.object({
-  input: z.enum(["1K", "5K", "10K", "50K", "100K"]),
+  input: z.enum(["250", "500", "1K", "2.5K", "5K"]),
   original_ms: z.number().min(0),
   optimized_ms: z.number().min(0),
   original_estimated: z.boolean().default(false),
@@ -216,7 +359,16 @@ const seriesPoint = z.object({
 });
 export const execBenchmarkSchema = z.object({
   series: z.array(seriesPoint).length(5),
-  peak_memory_mb: z.object({ original: z.number().min(0), optimized: z.number().min(0) }),
+  peak_memory_mb: z.object({
+    original: z.number().min(0),
+    optimized: z.number().min(0),
+  }),
+  verification: z
+    .object({
+      passed: z.number().int().min(0).max(100),
+      total: z.literal(100),
+    })
+    .optional(),
   notes: z.array(z.string().max(300)).max(6).default([]),
 });
 export type ExecBenchmark = z.infer<typeof execBenchmarkSchema>;

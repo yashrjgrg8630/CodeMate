@@ -1,4 +1,4 @@
-import type { DSARoadmap } from "@/types/domain";
+import type { DSARoadmap, RoadmapDurationUnit } from "@/types/domain";
 import { ApiError, apiRequest } from "./client";
 
 export async function getLatestRoadmap(): Promise<DSARoadmap | null> {
@@ -11,16 +11,18 @@ export async function getLatestRoadmap(): Promise<DSARoadmap | null> {
 }
 
 export async function generateRoadmap(input: {
-  targetRole?: string;
-  preparationLevel?: string;
-  weeks: number;
+  targetRole: string;
+  preparationLevel: string;
+  durationValue: number;
+  durationUnit: RoadmapDurationUnit;
 }): Promise<DSARoadmap> {
   return apiRequest<DSARoadmap>("/api/roadmap", {
     method: "POST",
     body: JSON.stringify({
-      targetRole: input.targetRole ?? "Software Engineer",
-      preparationLevel: input.preparationLevel ?? "Intermediate",
-      weeks: input.weeks,
+      targetRole: input.targetRole,
+      preparationLevel: input.preparationLevel,
+      durationValue: input.durationValue,
+      durationUnit: input.durationUnit,
     }),
   });
 }
@@ -38,5 +40,20 @@ export async function updateRoadmapProblem(
   }>(`/api/roadmap/${encodeURIComponent(roadmapId)}/problems/${encodeURIComponent(problemId)}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
+  });
+}
+
+export async function updateRoadmapTask(
+  roadmapId: string,
+  taskId: string,
+  completed: boolean,
+): Promise<{ taskId: string; completed: boolean; topicProgress: number }> {
+  return apiRequest<{
+    taskId: string;
+    completed: boolean;
+    topicProgress: number;
+  }>(`/api/roadmap/${encodeURIComponent(roadmapId)}/tasks/${encodeURIComponent(taskId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ completed }),
   });
 }

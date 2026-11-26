@@ -14,22 +14,51 @@ import {
   interviewEvaluateBody,
   interviewReportBody,
   interviewStartBody,
+  liveInterviewAbandonBody,
+  liveInterviewCompleteBody,
+  liveInterviewStartBody,
   optimizationBody,
   roadmapBody,
   roadmapProblemPatch,
-  tzQuery,
+  roadmapTaskPatch,
+  progressQuery,
   verifyBody,
 } from "../schemas/requests.js";
 import type { AIService } from "../services/ai/ai-service.js";
 import type { AuthService } from "../services/auth.js";
-import { runBenchmark } from "../services/benchmark.js";
+import {
+  cancelBenchmarkJob,
+  getBenchmarkJob,
+  runBenchmarkExclusive,
+  startBenchmarkJob,
+} from "../services/benchmark-jobs.js";
 import { analyzeJob } from "../services/career.js";
 import { analyzeCode } from "../services/code-analysis.js";
 import { convertCode } from "../services/conversion.js";
-import { clearHistory, createHistoryItem, deleteHistoryItem, getHistoryItem, listHistory } from "../services/history.js";
-import { evaluateAnswer, interviewReport, startInterview } from "../services/interview.js";
+import {
+  clearHistory,
+  createHistoryItem,
+  deleteHistoryItem,
+  getHistoryItem,
+  listHistory,
+} from "../services/history.js";
+import {
+  evaluateAnswer,
+  interviewReport,
+  startInterview,
+} from "../services/interview.js";
+import {
+  abandonLiveInterview,
+  completeLiveInterview,
+  startLiveInterview,
+} from "../services/live-interview.js";
 import { optimizeCode, verifyCandidate } from "../services/optimization.js";
-import { generateRoadmap, latestRoadmap, setProblemState } from "../services/roadmap.js";
+import {
+  generateRoadmap,
+  latestRoadmap,
+  setProblemState,
+  setTaskState,
+} from "../services/roadmap.js";
 import { getDashboard, getProgress } from "../services/stats.js";
 
 export interface ApiRouteDeps {
@@ -58,11 +87,22 @@ export function createApiRoutes(deps: ApiRouteDeps): Hono<AppBindings> {
   const aiQuota: MiddlewareHandler<AppBindings> = async (c, next) => {
     const used = await ai.callsInLast24h(c.get("userId"));
     if (used >= env.AI_DAILY_LIMIT) {
-      throw new AppError(429, "AI_QUOTA_EXCEEDED", "Daily AI usage limit reached. Please try again tomorrow.");
+      throw new AppError(
+        429,
+        "AI_QUOTA_EXCEEDED",
+        "Daily AI usage limit reached. Please try again tomorrow.",
+      );
     }
     await next();
   };
   const aiGuard = [aiMinute, aiQuota] as const;
+  const liveInterviewLimit = rateLimit({
+    limiter: deps.limiter,
+    name: "live-interview",
+    limit: 5,
+    windowMs: 60 * 60 * 1000,
+    key: (c) => String(c.get("userId")),
+  });
 
   // ---- Analyzer
   app.post("/analysis", ...aiGuard, async (c) => {
@@ -77,7 +117,9 @@ export function createApiRoutes(deps: ApiRouteDeps): Hono<AppBindings> {
   });
   app.post("/optimization/verify", ...aiGuard, async (c) => {
     const body = await parseBody(c, verifyBody);
-    return c.json(await verifyCandidate(svc, c.get("userId"), body.candidateId));
+    return c.json(
+      await verifyCandidate(svc, c.get("userId"), body.candidateId),
+    );
   });
 
   // ---- Converter
@@ -87,13 +129,27 @@ export function createApiRoutes(deps: ApiRouteDeps): Hono<AppBindings> {
   });
 
   // ---- Benchmark
+  app.post("/benchmark/jobs", ...aiGuard, async (c) => {
+    const body = await parseBody(c, benchmarkBody);
+    return c.json(startBenchmarkJob(svc, c.get("userId"), body), 202);
+  });
+  app.get("/benchmark/jobs/:jobId", async (c) =>
+    c.json(getBenchmarkJob(c.get("userId"), c.req.param("jobId"))),
+  );
+  app.delete("/benchmark/jobs/:jobId", async (c) =>
+    c.json(cancelBenchmarkJob(c.get("userId"), c.req.param("jobId")), 202),
+  );
   app.post("/benchmark", ...aiGuard, async (c) => {
     const body = await parseBody(c, benchmarkBody);
-    return c.json(await runBenchmark(svc, c.get("userId"), body));
+    return c.json(
+      await runBenchmarkExclusive(svc, c.get("userId"), body, c.req.raw.signal),
+    );
   });
 
   // ---- History
-  app.get("/history", async (c) => c.json(await listHistory(db, c.get("userId"))));
+  app.get("/history", async (c) =>
+    c.json(await listHistory(db, c.get("userId"))),
+  );
   app.get("/history/:id", async (c) => {
     const id = c.req.param("id");
     if (id.length > 100) throw notFound("History item not found.");
@@ -105,7 +161,10 @@ export function createApiRoutes(deps: ApiRouteDeps): Hono<AppBindings> {
   });
   app.delete("/history/:id", async (c) => {
     const id = c.req.param("id");
-    if (id.length > 100 || !(await deleteHistoryItem(db, c.get("userId"), id))) {
+    if (
+      id.length > 100 ||
+      !(await deleteHistoryItem(db, c.get("userId"), id))
+    ) {
       throw notFound("History item not found.");
     }
     return c.body(null, 204);
@@ -134,15 +193,39 @@ export function createApiRoutes(deps: ApiRouteDeps): Hono<AppBindings> {
     const body = await parseBody(c, interviewReportBody);
     return c.json(await interviewReport(svc, c.get("userId"), body));
   });
+  app.post("/interview/live/start", liveInterviewLimit, async (c) => {
+    const body = await parseBody(c, liveInterviewStartBody);
+    return c.json(await startLiveInterview({ db, env }, c.get("userId"), body));
+  });
+  app.post("/interview/live/complete", ...aiGuard, async (c) => {
+    const body = await parseBody(c, liveInterviewCompleteBody);
+    return c.json(
+      await completeLiveInterview({ db, ai }, c.get("userId"), body),
+    );
+  });
+  app.post("/interview/live/abandon", async (c) => {
+    const body = await parseBody(c, liveInterviewAbandonBody);
+    await abandonLiveInterview(db, c.get("userId"), body.sessionId);
+    return c.body(null, 204);
+  });
 
   // ---- Progress & dashboard (pure aggregation of stored activity)
   app.get("/progress", async (c) => {
-    const { tz } = parseQuery(c, tzQuery);
-    return c.json(await getProgress(db, c.get("userId"), tz ?? "UTC"));
+    const { tz, range } = parseQuery(c, progressQuery);
+    return c.json(
+      await getProgress(
+        db,
+        c.get("userId"),
+        tz ?? "UTC",
+        undefined,
+        range ?? "all",
+      ),
+    );
   });
   app.delete("/activity/:id", async (c) => {
     const activityId = c.req.param("id");
-    if (!activityId || activityId.length > 200) throw notFound("Activity not found.");
+    if (!activityId || activityId.length > 200)
+      throw notFound("Activity not found.");
 
     const result = await db.activityEvent.deleteMany({
       where: { id: activityId, userId: c.get("userId") },
@@ -155,18 +238,31 @@ export function createApiRoutes(deps: ApiRouteDeps): Hono<AppBindings> {
     await db.activityEvent.deleteMany({ where: { userId: c.get("userId") } });
     return c.body(null, 204);
   });
-  app.get("/dashboard", async (c) => c.json(await getDashboard(db, c.get("userId"))));
+  app.get("/dashboard", async (c) =>
+    c.json(await getDashboard(db, c.get("userId"))),
+  );
 
   // ---- DSA roadmap
   app.post("/roadmap", ...aiGuard, async (c) => {
     const body = await parseBody(c, roadmapBody);
     return c.json(await generateRoadmap(svc, c.get("userId"), body));
   });
-  app.get("/roadmap/latest", async (c) => c.json(await latestRoadmap(db, c.get("userId"))));
+  app.get("/roadmap/latest", async (c) =>
+    c.json(await latestRoadmap(db, c.get("userId"))),
+  );
   app.patch("/roadmap/:roadmapId/problems/:problemId", async (c) => {
     const body = await parseBody(c, roadmapProblemPatch);
     const { roadmapId, problemId } = c.req.param();
-    return c.json(await setProblemState(db, c.get("userId"), roadmapId, problemId, body));
+    return c.json(
+      await setProblemState(db, c.get("userId"), roadmapId, problemId, body),
+    );
+  });
+  app.patch("/roadmap/:roadmapId/tasks/:taskId", async (c) => {
+    const body = await parseBody(c, roadmapTaskPatch);
+    const { roadmapId, taskId } = c.req.param();
+    return c.json(
+      await setTaskState(db, c.get("userId"), roadmapId, taskId, body),
+    );
   });
 
   return app;

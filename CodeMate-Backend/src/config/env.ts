@@ -22,8 +22,16 @@ const schema = z.object({
   OAUTH_SUCCESS_REDIRECT: optionalString,
   OAUTH_FAILURE_REDIRECT: optionalString,
 
+  AI_PROVIDER: z.enum(["gemini", "openai-compatible"]).default("gemini"),
+  OPENAI_BASE_URL: optionalString,
+  OPENAI_API_KEY: optionalString,
+  MODAL_PROXY_TOKEN_ID: optionalString,
+  MODAL_PROXY_TOKEN_SECRET: optionalString,
+  OPENAI_MODEL: z.string().min(1).default("deepseek-ai/DeepSeek-V4.1-Flash"),
+
   GEMINI_API_KEY: z.string().min(1, "GEMINI_API_KEY is required"),
-  GEMINI_MODEL: z.string().min(1).default("gemini-3.1-flash-lite"),
+  GEMINI_MODEL: z.string().min(1).default("gemini-flash-lite-latest"),
+  GEMINI_LIVE_MODEL: z.string().min(1).default("gemini-3.8-live"),
   GEMINI_EXEC_MODEL: optionalString,
   GEMINI_THINKING_BUDGET: z.coerce.number().int().min(0).max(32768).optional(),
   GEMINI_COST_PER_MTOK_INPUT: z.coerce.number().min(0).default(0.75),

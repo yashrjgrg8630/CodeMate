@@ -34,7 +34,8 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Cloudflare / Wrangler
+# Stitch reference
+.stitch_reference/
 .dev.vars
 
 # Editor & OS files

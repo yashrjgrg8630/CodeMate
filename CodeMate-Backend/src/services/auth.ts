@@ -17,7 +17,9 @@ export interface SessionTokens {
   refreshToken: string;
 }
 
-export const toPublicUser = (u: Pick<User, "id" | "email" | "name" | "avatarUrl">): PublicUser => ({
+export const toPublicUser = (
+  u: Pick<User, "id" | "email" | "name" | "avatarUrl">,
+): PublicUser => ({
   id: u.id,
   email: u.email,
   name: u.name,
@@ -37,32 +39,60 @@ export class AuthService {
 
   // ---------- passwords ----------
 
-  async signup(input: { email: string; password: string; name: string }): Promise<User> {
-    const existing = await this.db.user.findUnique({ where: { email: input.email } });
-    if (existing) throw conflict("EMAIL_TAKEN", "An account with this email already exists.");
-    const passwordHash = await bcrypt.hash(input.password, this.env.BCRYPT_ROUNDS);
+  async signup(input: {
+    email: string;
+    password: string;
+    name: string;
+  }): Promise<User> {
+    const existing = await this.db.user.findUnique({
+      where: { email: input.email },
+    });
+    if (existing)
+      throw conflict(
+        "EMAIL_TAKEN",
+        "An account with this email already exists.",
+      );
+    const passwordHash = await bcrypt.hash(
+      input.password,
+      this.env.BCRYPT_ROUNDS,
+    );
     try {
-      return await this.db.user.create({ data: { email: input.email, name: input.name, passwordHash } });
+      return await this.db.user.create({
+        data: { email: input.email, name: input.name, passwordHash },
+      });
     } catch (err) {
       // Lost a race with a concurrent signup for the same email.
-      if (typeof err === "object" && err && (err as { code?: string }).code === "P2002") {
-        throw conflict("EMAIL_TAKEN", "An account with this email already exists.");
+      if (
+        typeof err === "object" &&
+        err &&
+        (err as { code?: string }).code === "P2002"
+      ) {
+        throw conflict(
+          "EMAIL_TAKEN",
+          "An account with this email already exists.",
+        );
       }
       throw err;
     }
   }
 
   async login(input: { email: string; password: string }): Promise<User> {
-    const user = await this.db.user.findUnique({ where: { email: input.email } });
+    const user = await this.db.user.findUnique({
+      where: { email: input.email },
+    });
     // Always run a bcrypt compare so response time does not reveal whether the email exists.
     const hash = user?.passwordHash ?? (await this.getDummyHash());
     const ok = await bcrypt.compare(input.password, hash);
-    if (!user || !user.passwordHash || !ok) throw unauthorized("Invalid email or password.");
+    if (!user || !user.passwordHash || !ok)
+      throw unauthorized("Invalid email or password.");
     return user;
   }
 
   private getDummyHash(): Promise<string> {
-    this.dummyHash ??= bcrypt.hash("codemate-dummy-password", this.env.BCRYPT_ROUNDS);
+    this.dummyHash ??= bcrypt.hash(
+      "codemate-dummy-password",
+      this.env.BCRYPT_ROUNDS,
+    );
     return this.dummyHash;
   }
 
@@ -96,17 +126,27 @@ export class AuthService {
   // ---------- refresh tokens (opaque, hashed, rotated, reuse-detected) ----------
 
   private refreshExpiry(): Date {
-    return new Date(Date.now() + this.env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+    return new Date(
+      Date.now() + this.env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
+    );
   }
 
   async startSession(userId: string): Promise<SessionTokens> {
     return this.issueRefresh(userId, newId("fam"));
   }
 
-  private async issueRefresh(userId: string, familyId: string): Promise<SessionTokens> {
+  private async issueRefresh(
+    userId: string,
+    familyId: string,
+  ): Promise<SessionTokens> {
     const refreshToken = randomBytes(48).toString("base64url");
     await this.db.refreshToken.create({
-      data: { userId, familyId, tokenHash: sha256(refreshToken), expiresAt: this.refreshExpiry() },
+      data: {
+        userId,
+        familyId,
+        tokenHash: sha256(refreshToken),
+        expiresAt: this.refreshExpiry(),
+      },
     });
     return { accessToken: await this.signAccess(userId), refreshToken };
   }
@@ -115,15 +155,25 @@ export class AuthService {
    * Exchanges a refresh token for a new pair. The presented token is revoked atomically; presenting an
    * already-used token is treated as theft and revokes the whole rotation family.
    */
-  async rotate(rawToken: string): Promise<{ user: User; tokens: SessionTokens }> {
-    const row = await this.db.refreshToken.findUnique({ where: { tokenHash: sha256(rawToken) } });
+  async rotate(
+    rawToken: string,
+  ): Promise<{ user: User; tokens: SessionTokens }> {
+    const row = await this.db.refreshToken.findUnique({
+      where: { tokenHash: sha256(rawToken) },
+    });
     if (!row) throw unauthorized("Invalid refresh token.");
 
     if (row.revokedAt) {
-      await this.db.refreshToken.updateMany({ where: { familyId: row.familyId, revokedAt: null }, data: { revokedAt: new Date() } });
-      throw unauthorized("Refresh token was already used. Please sign in again.");
+      await this.db.refreshToken.updateMany({
+        where: { familyId: row.familyId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      throw unauthorized(
+        "Refresh token was already used. Please sign in again.",
+      );
     }
-    if (row.expiresAt <= new Date()) throw unauthorized("Refresh token expired. Please sign in again.");
+    if (row.expiresAt <= new Date())
+      throw unauthorized("Refresh token expired. Please sign in again.");
 
     const claimed = await this.db.refreshToken.updateMany({
       where: { id: row.id, revokedAt: null },
@@ -131,24 +181,40 @@ export class AuthService {
     });
     if (claimed.count !== 1) {
       // A concurrent request rotated it first: same outcome as reuse.
-      await this.db.refreshToken.updateMany({ where: { familyId: row.familyId, revokedAt: null }, data: { revokedAt: new Date() } });
-      throw unauthorized("Refresh token was already used. Please sign in again.");
+      await this.db.refreshToken.updateMany({
+        where: { familyId: row.familyId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      throw unauthorized(
+        "Refresh token was already used. Please sign in again.",
+      );
     }
 
     const user = await this.db.user.findUnique({ where: { id: row.userId } });
     if (!user) throw unauthorized("Account no longer exists.");
 
     const tokens = await this.issueRefresh(user.id, row.familyId);
-    const next = await this.db.refreshToken.findUnique({ where: { tokenHash: sha256(tokens.refreshToken) } });
-    if (next) await this.db.refreshToken.update({ where: { id: row.id }, data: { replacedById: next.id } });
+    const next = await this.db.refreshToken.findUnique({
+      where: { tokenHash: sha256(tokens.refreshToken) },
+    });
+    if (next)
+      await this.db.refreshToken.update({
+        where: { id: row.id },
+        data: { replacedById: next.id },
+      });
     return { user, tokens };
   }
 
   async revoke(rawToken: string | undefined): Promise<void> {
     if (!rawToken) return;
-    const row = await this.db.refreshToken.findUnique({ where: { tokenHash: sha256(rawToken) } });
+    const row = await this.db.refreshToken.findUnique({
+      where: { tokenHash: sha256(rawToken) },
+    });
     if (!row) return;
-    await this.db.refreshToken.updateMany({ where: { familyId: row.familyId, revokedAt: null }, data: { revokedAt: new Date() } });
+    await this.db.refreshToken.updateMany({
+      where: { familyId: row.familyId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 
   async getUser(userId: string): Promise<User> {
@@ -159,7 +225,11 @@ export class AuthService {
 
   // ---------- Google OAuth ----------
 
-  async signOAuthState(payload: { state: string; verifier: string }): Promise<string> {
+  async signOAuthState(payload: {
+    state: string;
+    verifier: string;
+    returnTo?: string;
+  }): Promise<string> {
     return new SignJWT(payload)
       .setProtectedHeader({ alg: "HS256" })
       .setIssuer(ISSUER)
@@ -169,19 +239,49 @@ export class AuthService {
       .sign(this.secret);
   }
 
-  async verifyOAuthState(token: string): Promise<{ state: string; verifier: string }> {
+  async verifyOAuthState(
+    token: string,
+  ): Promise<{ state: string; verifier: string; returnTo?: string }> {
     try {
-      const { payload } = await jwtVerify(token, this.secret, { algorithms: ["HS256"], issuer: ISSUER, audience: OAUTH_AUDIENCE });
-      if (typeof payload["state"] !== "string" || typeof payload["verifier"] !== "string") throw new Error("bad payload");
-      return { state: payload["state"], verifier: payload["verifier"] };
+      const { payload } = await jwtVerify(token, this.secret, {
+        algorithms: ["HS256"],
+        issuer: ISSUER,
+        audience: OAUTH_AUDIENCE,
+      });
+      if (
+        typeof payload["state"] !== "string" ||
+        typeof payload["verifier"] !== "string"
+      )
+        throw new Error("bad payload");
+      return {
+        state: payload["state"],
+        verifier: payload["verifier"],
+        ...(typeof payload["returnTo"] === "string"
+          ? { returnTo: payload["returnTo"] }
+          : {}),
+      };
     } catch {
-      throw new AppError(400, "OAUTH_STATE_INVALID", "OAuth state is missing or expired.");
+      throw new AppError(
+        400,
+        "OAUTH_STATE_INVALID",
+        "OAuth state is missing or expired.",
+      );
     }
   }
 
-  async findOrCreateGoogleUser(profile: { sub: string; email: string; name: string; picture?: string | undefined }): Promise<User> {
+  async findOrCreateGoogleUser(profile: {
+    sub: string;
+    email: string;
+    name: string;
+    picture?: string | undefined;
+  }): Promise<User> {
     const bySubject = await this.db.user.findUnique({
-      where: { oauthProvider_oauthSubject: { oauthProvider: "google", oauthSubject: profile.sub } },
+      where: {
+        oauthProvider_oauthSubject: {
+          oauthProvider: "google",
+          oauthSubject: profile.sub,
+        },
+      },
     });
     if (bySubject) return bySubject;
 
@@ -189,10 +289,18 @@ export class AuthService {
     const byEmail = await this.db.user.findUnique({ where: { email } });
     if (byEmail) {
       if (byEmail.oauthProvider && byEmail.oauthProvider !== "google") {
-        throw new AppError(409, "ACCOUNT_CONFLICT", "This email is linked to a different sign-in method.");
+        throw new AppError(
+          409,
+          "ACCOUNT_CONFLICT",
+          "This email is linked to a different sign-in method.",
+        );
       }
       if (byEmail.oauthSubject && byEmail.oauthSubject !== profile.sub) {
-        throw new AppError(409, "ACCOUNT_CONFLICT", "This email is linked to a different Google account.");
+        throw new AppError(
+          409,
+          "ACCOUNT_CONFLICT",
+          "This email is linked to a different Google account.",
+        );
       }
       // Linking a password account: Google has verified the email, but signup here never did, so the
       // password may belong to someone who pre-registered the address. Drop it and kill existing sessions.
@@ -206,7 +314,10 @@ export class AuthService {
             avatarUrl: byEmail.avatarUrl ?? profile.picture ?? null,
           },
         }),
-        this.db.refreshToken.updateMany({ where: { userId: byEmail.id, revokedAt: null }, data: { revokedAt: new Date() } }),
+        this.db.refreshToken.updateMany({
+          where: { userId: byEmail.id, revokedAt: null },
+          data: { revokedAt: new Date() },
+        }),
       ]);
       return linked;
     }

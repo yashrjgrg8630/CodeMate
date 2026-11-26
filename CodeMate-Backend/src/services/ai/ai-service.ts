@@ -13,6 +13,7 @@ export interface JsonCallOptions<S extends z.ZodType> {
   schema: S;
   maxOutputTokens: number;
   temperature?: number;
+  signal?: AbortSignal;
 }
 
 export interface CodeJsonCallOptions<S extends z.ZodType> {
@@ -23,6 +24,7 @@ export interface CodeJsonCallOptions<S extends z.ZodType> {
   /** Schema for the single JSON object the executed script must print as its last stdout line. */
   schema: S;
   maxOutputTokens: number;
+  signal?: AbortSignal;
 }
 
 const BASE_SYSTEM = [
@@ -40,9 +42,9 @@ export function toGeminiSchema(schema: z.ZodType): unknown {
 }
 
 function stripFences(text: string): string {
-  const trimmed = text.trim();
-  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
-  return fenced?.[1] ?? trimmed;
+  const withoutThink = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(withoutThink);
+  return fenced?.[1] ?? withoutThink;
 }
 
 function lastJsonObjectLine(outputs: string[]): string | undefined {
@@ -69,10 +71,13 @@ export class AIService {
     const jsonSchema = toGeminiSchema(opts.schema);
     let prompt = opts.prompt;
 
+    const model =
+      this.env.AI_PROVIDER === "openai-compatible" ? this.env.OPENAI_MODEL : this.env.GEMINI_MODEL;
+
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       const res = await this.call(
         {
-          model: this.env.GEMINI_MODEL,
+          model,
           system: `${BASE_SYSTEM}\n\n${opts.system}\n\nRespond with a single JSON object that matches the provided schema. No prose, no markdown.`,
           prompt,
           jsonSchema,
@@ -80,6 +85,7 @@ export class AIService {
           temperature: opts.temperature ?? 0.2,
           thinkingBudget: this.env.GEMINI_THINKING_BUDGET,
           timeoutMs: this.env.AI_TIMEOUT_MS,
+          signal: opts.signal,
         },
         opts.userId,
         opts.feature,
@@ -99,12 +105,25 @@ export class AIService {
    * *executed* stdout (never the model's prose) and validate its final JSON line against `schema`.
    */
   async runCodeJson<S extends z.ZodType>(opts: CodeJsonCallOptions<S>): Promise<z.output<S>> {
+    if (!this.transport.supportsCodeExecution) {
+      throw new AppError(
+        501,
+        "CODE_EXECUTION_UNAVAILABLE",
+        "The configured AI provider does not execute code. Configure Gemini sandbox execution to run verification or benchmarks.",
+      );
+    }
+
     let prompt = opts.prompt;
+
+    const execModel =
+      this.env.AI_PROVIDER === "openai-compatible"
+        ? this.env.OPENAI_MODEL
+        : (this.env.GEMINI_EXEC_MODEL ?? this.env.GEMINI_MODEL);
 
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       const res = await this.call(
         {
-          model: this.env.GEMINI_EXEC_MODEL ?? this.env.GEMINI_MODEL,
+          model: execModel,
           system: `${BASE_SYSTEM}\n\n${opts.system}`,
           prompt,
           codeExecution: true,
@@ -112,6 +131,7 @@ export class AIService {
           temperature: 0,
           thinkingBudget: this.env.GEMINI_THINKING_BUDGET,
           timeoutMs: this.env.AI_EXEC_TIMEOUT_MS,
+          signal: opts.signal,
         },
         opts.userId,
         opts.feature,
@@ -165,7 +185,7 @@ export class AIService {
   private async call(req: GenerateRequest, userId: string, feature: string): Promise<GenerateResponse> {
     const started = Date.now();
     try {
-      const res = await this.transport.generate(req);
+      const res = await this.generateWithSignal(req);
       await this.record({ userId, feature, model: req.model, started, res, ok: true });
       return res;
     } catch (err) {
@@ -179,6 +199,31 @@ export class AIService {
       });
       throw err;
     }
+  }
+
+  private async generateWithSignal(req: GenerateRequest): Promise<GenerateResponse> {
+    if (!req.signal) return this.transport.generate(req);
+    if (req.signal.aborted) throw new AppError(409, "AI_CANCELLED", "The benchmark was cancelled.");
+
+    return new Promise((resolve, reject) => {
+      const cleanup = () => req.signal?.removeEventListener("abort", onAbort);
+      const onAbort = () => {
+        cleanup();
+        reject(new AppError(409, "AI_CANCELLED", "The benchmark was cancelled."));
+      };
+
+      req.signal?.addEventListener("abort", onAbort, { once: true });
+      this.transport.generate(req).then(
+        (response) => {
+          cleanup();
+          resolve(response);
+        },
+        (error: unknown) => {
+          cleanup();
+          reject(error);
+        },
+      );
+    });
   }
 
   private async record(args: {

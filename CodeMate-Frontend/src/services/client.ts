@@ -1,11 +1,3 @@
-const DEFAULT_API_CANDIDATES = [
-  import.meta.env["VITE_API_URL"],
-  typeof window !== "undefined" ? window.location.origin : undefined,
-  "http://localhost:8787",
-  "http://127.0.0.1:8787",
-].filter((value): value is string => Boolean(value));
-
-const API_BASE_URL = DEFAULT_API_CANDIDATES[0]?.replace(/\/+$/, "") ?? "http://localhost:8787";
 const AUTH_NO_REFRESH = new Set([
   "/api/auth/login",
   "/api/auth/signup",
@@ -13,14 +5,23 @@ const AUTH_NO_REFRESH = new Set([
   "/api/auth/refresh",
 ]);
 
-function getApiCandidates(): string[] {
-  const seen = new Set<string>();
-  return DEFAULT_API_CANDIDATES.filter((candidate) => {
-    const normalized = candidate.replace(/\/+$/, "");
-    if (seen.has(normalized)) return false;
-    seen.add(normalized);
-    return true;
-  });
+export function getApiBaseUrl(): string {
+  if (typeof window !== "undefined") {
+    // In browser on localhost / 127.0.0.1, always use same-origin window.location.origin
+    // so Vite dev proxy handles /api seamlessly without cross-origin, CORS or Brave shield blocks.
+    const isLocalhost =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+    if (isLocalhost) {
+      return window.location.origin;
+    }
+    const configured = import.meta.env["VITE_API_URL"];
+    if (configured) return configured.replace(/\/+$/, "");
+    return window.location.origin;
+  }
+  const configured = import.meta.env["VITE_API_URL"];
+  if (configured) return configured.replace(/\/+$/, "");
+  return "http://localhost:8787";
 }
 
 export class ApiError extends Error {
@@ -36,9 +37,9 @@ export class ApiError extends Error {
 
 let refreshPromise: Promise<boolean> | undefined;
 
-async function refreshSession(): Promise<boolean> {
+async function refreshSession(baseUrl: string): Promise<boolean> {
   if (!refreshPromise) {
-    refreshPromise = fetch(`${API_BASE_URL}/api/auth/refresh`, {
+    refreshPromise = fetch(`${baseUrl}/api/auth/refresh`, {
       method: "POST",
       credentials: "include",
     })
@@ -53,60 +54,67 @@ async function refreshSession(): Promise<boolean> {
 
 async function send<T>(path: string, init: RequestInit, retried: boolean): Promise<T> {
   const headers = new Headers(init.headers);
-  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (init.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
 
-  const candidates = getApiCandidates();
-  let lastError: Error | undefined;
+  const baseUrl = getApiBaseUrl();
 
-  for (const baseUrl of candidates) {
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      ...init,
+      headers,
+      credentials: "include",
+    });
+  } catch {
+    throw new ApiError(
+      "Could not reach the CodeMate backend. Please check your connection or start the backend server.",
+      0,
+      "NETWORK_ERROR",
+    );
+  }
+
+  // Attempt token refresh on 401 for authenticated endpoints (only once per request)
+  if (response.status === 401 && !retried && !AUTH_NO_REFRESH.has(path)) {
+    const refreshed = await refreshSession(baseUrl);
+    if (refreshed) {
+      return send<T>(path, init, true);
+    }
+  }
+
+  const text = await response.text();
+  let payload: unknown;
+  if (text) {
     try {
-      const response = await fetch(`${baseUrl}${path}`, {
-        ...init,
-        headers,
-        credentials: "include",
-      });
-
-      if (response.status === 401 && !retried && !AUTH_NO_REFRESH.has(path)) {
-        if (await refreshSession()) return send<T>(path, init, true);
-      }
-
-      const text = await response.text();
-      let payload: unknown;
-      if (text) {
-        try {
-          payload = JSON.parse(text);
-        } catch {
-          if (response.ok)
-            throw new ApiError("The backend returned an invalid response.", response.status);
-        }
-      }
-
-      if (!response.ok) {
-        const body = payload as { error?: { message?: string; code?: string } } | undefined;
-        if (response.status === 401 && typeof window !== "undefined" && !AUTH_NO_REFRESH.has(path)) {
-          window.dispatchEvent(new Event("codemate:unauthorized"));
-        }
-        throw new ApiError(
-          body?.error?.message ?? `The request failed (${response.status}).`,
-          response.status,
-          body?.error?.code,
-        );
-      }
-      return payload as T;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error("Request failed");
-      if (error instanceof ApiError && error.status !== 0 && error.status !== 404) {
-        throw error;
+      payload = JSON.parse(text);
+    } catch {
+      if (response.ok) {
+        throw new ApiError("The backend returned an invalid response.", response.status);
       }
     }
   }
 
-  const reachableBase = candidates.join(", ");
-  throw new ApiError(
-    `Could not reach the CodeMate backend. Start the backend server and try again, or set VITE_API_URL to the correct API URL. Tried: ${reachableBase}.`,
-    0,
-    "NETWORK_ERROR",
-  );
+  if (!response.ok) {
+    const body = payload as { error?: { message?: string; code?: string } } | undefined;
+
+    // Only dispatch unauthorized if the session could not be refreshed
+    if (
+      response.status === 401 &&
+      typeof window !== "undefined" &&
+      !AUTH_NO_REFRESH.has(path)
+    ) {
+      window.dispatchEvent(new Event("codemate:unauthorized"));
+    }
+
+    throw new ApiError(
+      body?.error?.message ?? `The request failed (${response.status}).`,
+      response.status,
+      body?.error?.code,
+    );
+  }
+
+  return payload as T;
 }
 
 export function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {

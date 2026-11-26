@@ -11,6 +11,9 @@ import {
 } from "../src/schemas/domain.js";
 import { createCtx, exec, fixtures, json, PY_CODE, resetDb, signup, type Ctx, type ErrorBody } from "./helpers.js";
 import { AppError } from "../src/lib/errors.js";
+import { FallbackTransport, type GenerateResponse } from "../src/services/ai/transport.js";
+import { AIService } from "../src/services/ai/ai-service.js";
+import { runBenchmark } from "../src/services/benchmark.js";
 
 let ctx: Ctx;
 beforeEach(async () => {
@@ -138,6 +141,7 @@ describe("POST /api/optimization (+ /verify)", () => {
     const s = await signup(ctx);
     const o = await optimize(s);
     expect(o.candidates).toHaveLength(4);
+    expect(o.language).toBe("python");
     expect(new Set(o.candidates.map((c) => c.id)).size).toBe(4);
     expect(o.recommendedId).toBe(o.candidates[1]?.id);
     expect(o.original.code).toBe(PY_CODE);
@@ -257,17 +261,21 @@ describe("POST /api/benchmark", () => {
     expect(r.status).toBe(200);
     const b = benchmarkResultSchema.parse(r.body);
     expect(b.isMockData).toBe(false);
-    expect(b.executionSeries.map((p) => p.input)).toEqual(["1K", "5K", "10K", "50K", "100K"]);
+    expect(b.executionSeries.map((p) => p.input)).toEqual(["250", "500", "1K", "2.5K", "5K"]);
     expect(b.improvementPercent).toBe(75); // (200-50)/200
+    expect(b.performanceChangePercent).toBe(75);
     expect(b.metrics[0]).toMatchObject({ label: "Execution Time", original: 200, optimized: 50, unit: "ms" });
+    expect(b.candidate).toEqual({ approach: "Sliding Window", language: "python" });
     expect(b.optimizedComplexity).toEqual({ time: "O(n)", space: "O(1)" });
     expect(b.originalComplexity.time).toBe("O(n²)");
-    // Not verified beforehand, so the benchmark ran verification itself.
+    // Not verified beforehand, so equivalence testing was included in the benchmark execution.
     expect(b.verification).toEqual({ total: 100, passed: 100, failed: 0 });
     expect(b.trustScore.correctness).toBe(100);
     expect(b.trustScore.benchmark).toBe(88); // one extrapolated point
     expect(b.notes.join(" ")).toMatch(/extrapolated/);
-    expect(ctx.transport.callsFor("verify behavioural equivalence")).toHaveLength(1);
+    expect(ctx.transport.callsFor("verify behavioural equivalence")).toHaveLength(0);
+    expect(ctx.transport.callsFor("benchmark two implementations")).toHaveLength(1);
+    expect(ctx.transport.callsFor("benchmark two implementations")[0]?.prompt).toContain("exactly 100 deterministic");
     expect(o.recommendedId).toBeTruthy();
   });
 
@@ -289,6 +297,69 @@ describe("POST /api/benchmark", () => {
     expect(await ctx.db.benchmark.count()).toBe(1);
   });
 
+  it("reports a slower candidate as slower instead of presenting a false improvement", async () => {
+    const { s } = await setup();
+    const slower = {
+      ...fixtures.benchmark,
+      series: fixtures.benchmark.series.map((point) =>
+        point.input === "5K" ? { ...point, optimized_ms: 300 } : point,
+      ),
+    };
+    ctx.transport.queue("benchmark two implementations", () => exec(slower));
+
+    const result = await s.post<BenchmarkResult>("/api/benchmark", {});
+    expect(result.status).toBe(200);
+    expect(result.body.performanceChangePercent).toBe(-50);
+    expect(result.body.improvementPercent).toBe(0);
+    const history = await s.get<{ evolution: { detail: string }[] }[]>("/api/history");
+    expect(history.body[0]?.evolution[0]?.detail).toContain("50% slower at 5K inputs");
+  });
+
+  it("refuses providers that cannot execute code instead of trusting generated output", async () => {
+    const { o } = await setup();
+    const user = await ctx.db.user.findUniqueOrThrow({ where: { email: "ada@example.com" } });
+    let providerCalls = 0;
+    const unsupportedAi = new AIService(
+      ctx.env,
+      {
+        supportsCodeExecution: false,
+        generate: async () => {
+          providerCalls += 1;
+          return exec(fixtures.benchmark);
+        },
+      },
+      ctx.db,
+    );
+
+    await expect(
+      runBenchmark({ db: ctx.db, ai: unsupportedAi }, user.id, { candidateId: o.recommendedId }),
+    ).rejects.toMatchObject({ status: 501, code: "CODE_EXECUTION_UNAVAILABLE" });
+    expect(providerCalls).toBe(0);
+    expect(await ctx.db.benchmark.count()).toBe(0);
+  });
+
+  it("routes code execution through a real execution-capable fallback", async () => {
+    const { o } = await setup();
+    const user = await ctx.db.user.findUniqueOrThrow({ where: { email: "ada@example.com" } });
+    const primaryCalls: string[] = [];
+    const primary = {
+      supportsCodeExecution: false,
+      generate: async () => {
+        primaryCalls.push("called");
+        throw new Error("The text-only provider must not run code.");
+      },
+    };
+    const ai = new AIService(
+      ctx.env,
+      new FallbackTransport(primary, ctx.transport, "gemini-exec-test"),
+      ctx.db,
+    );
+
+    await runBenchmark({ db: ctx.db, ai }, user.id, { candidateId: o.recommendedId });
+    expect(primaryCalls).toHaveLength(0);
+    expect(ctx.transport.callsFor("benchmark two implementations")[0]?.model).toBe("gemini-exec-test");
+  });
+
   it("404s for another user's candidate and 400s on a bad body", async () => {
     const { o } = await setup();
     const other = await signup(ctx, "other@example.com");
@@ -301,5 +372,88 @@ describe("POST /api/benchmark", () => {
     ctx.transport.queue("benchmark two implementations", { text: "done", codeOutputs: ["Traceback..."], inputTokens: 1, outputTokens: 1 });
     expect((await s.post("/api/benchmark", {})).status).toBe(200);
     expect(ctx.transport.callsFor("benchmark two implementations")).toHaveLength(2);
+  });
+
+  it("completes asynchronously and returns the persisted real result", async () => {
+    const { s } = await setup();
+    const started = await s.post<{ id: string; status: string }>("/api/benchmark/jobs", {});
+    expect(started.status).toBe(202);
+    expect(started.body.status).toBe("queued");
+
+    let current = started.body;
+    for (let attempt = 0; attempt < 30 && current.status !== "completed"; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      current = (await s.get<typeof current & { result?: BenchmarkResult }>(`/api/benchmark/jobs/${started.body.id}`)).body;
+    }
+
+    expect(current.status).toBe("completed");
+    const completed = await s.get<{ status: string; result: BenchmarkResult }>(
+      `/api/benchmark/jobs/${started.body.id}`,
+    );
+    expect(completed.body.result.executionSeries.map((point) => point.input)).toEqual([
+      "250",
+      "500",
+      "1K",
+      "2.5K",
+      "5K",
+    ]);
+    expect(await ctx.db.benchmark.count()).toBe(1);
+  });
+
+  it("rejects overlapping runs for one user and cancels an active sandbox call", async () => {
+    const { s } = await setup();
+    ctx.transport.queue(
+      "benchmark two implementations",
+      (request) =>
+        new Promise<GenerateResponse>((_resolve, reject) => {
+          request.signal?.addEventListener(
+            "abort",
+            () => reject(new AppError(409, "AI_CANCELLED", "The benchmark was cancelled.")),
+            { once: true },
+          );
+        }),
+    );
+    const started = await s.post<{ id: string }>("/api/benchmark/jobs", {});
+    for (let attempt = 0; attempt < 30 && ctx.transport.callsFor("benchmark two implementations").length === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(ctx.transport.callsFor("benchmark two implementations")).toHaveLength(1);
+
+    const duplicate = await s.post<ErrorBody>("/api/benchmark/jobs", {});
+    expect(duplicate.status).toBe(409);
+    expect(duplicate.body.error.code).toBe("BENCHMARK_ALREADY_RUNNING");
+
+    const cancelling = await s.request<{ status: string }>(
+      "DELETE",
+      `/api/benchmark/jobs/${started.body.id}`,
+    );
+    expect(cancelling.status).toBe(202);
+    expect(cancelling.body.status).toBe("cancelling");
+
+    let status = "cancelling";
+    for (let attempt = 0; attempt < 30 && status !== "cancelled"; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      status = (await s.get<{ status: string }>(`/api/benchmark/jobs/${started.body.id}`)).body.status;
+    }
+    expect(status).toBe("cancelled");
+    expect(await ctx.db.benchmark.count()).toBe(0);
+  });
+
+  it("surfaces missing optimizer data as a failed job rather than a false result", async () => {
+    const s = await signup(ctx);
+    const started = await s.post<{ id: string }>("/api/benchmark/jobs", {});
+    let status = "queued";
+    let error = "";
+    for (let attempt = 0; attempt < 30 && status !== "failed"; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const current = (
+        await s.get<{ status: string; error?: string }>(`/api/benchmark/jobs/${started.body.id}`)
+      ).body;
+      status = current.status;
+      error = current.error ?? "";
+    }
+    expect(status).toBe("failed");
+    expect(error).toContain("Run the optimizer first");
+    expect(await ctx.db.benchmark.count()).toBe(0);
   });
 });

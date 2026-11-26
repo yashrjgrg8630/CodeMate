@@ -1,10 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { AlertTriangle, ArrowLeftRight } from "lucide-react";
 import { convertCode } from "@/services/conversionService";
 import { SAMPLE_CODE } from "@/services/analysisService";
 import { LANGUAGES, type Language } from "@/types/domain";
+import { useBackgroundTask } from "@/hooks/use-background-task";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,7 +50,7 @@ function ConverterPage() {
   const [targetLanguage, setTargetLanguage] = useState<Language>("java");
   const [optimizeWhileConverting, setOptimize] = useState(true);
   const [code, setCode] = useState(SAMPLE_CODE.python);
-  const convert = useMutation({ mutationFn: convertCode });
+  const convert = useBackgroundTask<Awaited<ReturnType<typeof convertCode>>>("converter");
   const targetLanguages = LANGUAGES.filter((language) => language.id !== sourceLanguage);
 
   function changeSourceLanguage(value: string) {
@@ -64,18 +64,23 @@ function ConverterPage() {
     convert.reset();
   }
 
+  const targetLabel = LANGUAGES.find((language) => language.id === targetLanguage)?.label;
+
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Code Intelligence"
         title="Language Converter"
-        description="Move a working solution to another language and see exactly what changed."
+        description="Translate a working solution across languages while preserving idioms and inspecting every structural change."
         actions={<BackendBadge />}
       />
 
       <Card>
         <CardContent className="flex flex-wrap items-end gap-4 p-5">
           <div className="space-y-1.5">
-            <Label htmlFor="source-language">Source language</Label>
+            <Label htmlFor="source-language" className="text-xs">
+              Source language
+            </Label>
             <Select value={sourceLanguage} onValueChange={changeSourceLanguage}>
               <SelectTrigger id="source-language" className="w-40">
                 <SelectValue />
@@ -91,7 +96,9 @@ function ConverterPage() {
           </div>
           <ArrowLeftRight className="mb-2.5 size-4 text-muted-foreground" />
           <div className="space-y-1.5">
-            <Label htmlFor="target-language">Convert to</Label>
+            <Label htmlFor="target-language" className="text-xs">
+              Convert to
+            </Label>
             <Select
               value={targetLanguage}
               onValueChange={(value) => {
@@ -113,12 +120,16 @@ function ConverterPage() {
           </div>
           <div className="mb-2 flex items-center gap-2">
             <Switch id="optimize" checked={optimizeWhileConverting} onCheckedChange={setOptimize} />
-            <Label htmlFor="optimize">Optimize while converting</Label>
+            <Label htmlFor="optimize" className="text-xs font-medium">
+              Optimize while converting
+            </Label>
           </div>
           <Button
             className="mb-0.5 ml-auto"
             onClick={() =>
-              convert.mutate({ code, sourceLanguage, targetLanguage, optimizeWhileConverting })
+              convert.run(() =>
+                convertCode({ code, sourceLanguage, targetLanguage, optimizeWhileConverting }),
+              )
             }
             disabled={convert.isPending || !code.trim() || sourceLanguage === targetLanguage}
           >
@@ -127,32 +138,36 @@ function ConverterPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+      {convert.isError ? (
+        <p className="text-xs font-medium text-destructive" role="alert">
+          {convert.error?.message ?? "Conversion failed."}
+        </p>
+      ) : null}
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="flex flex-col">
           <CardHeader>
-            <CardTitle className="font-display text-xl">Source</CardTitle>
+            <CardTitle className="font-display text-lg">Source</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-1">
             <Textarea
               value={code}
               onChange={(e) => setCode(e.target.value)}
               spellCheck={false}
-              className="min-h-[320px] font-mono text-xs"
+              className="min-h-[340px] font-mono text-xs leading-relaxed"
               aria-label="Source code"
             />
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="flex flex-col">
           <CardHeader>
-            <CardTitle className="font-display text-xl">
-              Converted {LANGUAGES.find((language) => language.id === targetLanguage)?.label}
-            </CardTitle>
+            <CardTitle className="font-display text-lg">Converted {targetLabel}</CardTitle>
             <CardDescription>
               {convert.data ? convert.data.summary : "The translated result appears here."}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="flex-1 space-y-3">
             {convert.isPending ? <LoadingState label="Translating…" /> : null}
             {!convert.data && !convert.isPending ? (
               <EmptyState
@@ -163,10 +178,14 @@ function ConverterPage() {
             {convert.data ? (
               <>
                 <div className="flex flex-wrap gap-2">
-                  <Badge variant="outline">Time {convert.data.complexity.time}</Badge>
-                  <Badge variant="outline">Space {convert.data.complexity.space}</Badge>
+                  <Badge variant="outline" className="font-code">
+                    Time {convert.data.complexity.time}
+                  </Badge>
+                  <Badge variant="outline" className="font-code">
+                    Space {convert.data.complexity.space}
+                  </Badge>
                 </div>
-                <CodeBlock code={convert.data.code} />
+                <CodeBlock code={convert.data.code} label={targetLabel} />
               </>
             ) : null}
           </CardContent>
@@ -174,39 +193,45 @@ function ConverterPage() {
       </div>
 
       {convert.data ? (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle className="font-display text-xl">What changed</CardTitle>
+              <CardTitle className="font-display text-lg">What changed</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {convert.data.changes.map((change, i) => (
-                <div key={i} className="rounded-md border border-border p-3">
-                  <Badge variant="secondary" className="text-[10px] uppercase">
+                <div key={i} className="rounded-xl border border-border/80 bg-muted/20 p-3.5">
+                  <Badge variant="secondary" className="font-code text-[10px] uppercase">
                     {change.category}
                   </Badge>
-                  <p className="mt-2 text-sm">
+                  <p className="mt-2 font-code text-xs text-foreground">
                     {change.from} → {change.to}
                   </p>
-                  <p className="mt-1 text-xs text-muted-foreground">{change.note}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    {change.note}
+                  </p>
                 </div>
               ))}
             </CardContent>
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle className="font-display text-xl">Warnings</CardTitle>
+              <CardTitle className="font-display text-lg">Warnings</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {convert.data.warnings.map((warning, i) => (
-                <div
-                  key={i}
-                  className="flex gap-2 rounded-md border border-warning/40 bg-warning/5 p-3"
-                >
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
-                  <p className="text-xs text-muted-foreground">{warning}</p>
-                </div>
-              ))}
+              {convert.data.warnings.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No conversion warnings.</p>
+              ) : (
+                convert.data.warnings.map((warning, i) => (
+                  <div
+                    key={i}
+                    className="flex gap-2.5 rounded-xl border border-warning/35 bg-warning/[0.06] p-3.5"
+                  >
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
+                    <p className="text-xs leading-relaxed text-muted-foreground">{warning}</p>
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
         </div>

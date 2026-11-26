@@ -184,12 +184,18 @@ model JobAnalysis {
 }
 
 model InterviewSession {
-  id          String    @id @default(cuid())
-  userId      String
-  role        String
-  startedAt   DateTime  @default(now())
-  completedAt DateTime?
-  overall     Int?
+  id              String    @id @default(cuid())
+  userId          String
+  role            String
+  domain          String?
+  difficulty      String?
+  durationMinutes Int?
+  durationSeconds Int?
+  transcript      Json?
+  report          Json?
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  overall         Int?
 
   user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   questions InterviewQuestion[]
@@ -235,6 +241,7 @@ model Roadmap {
 
   user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   completions RoadmapProblem[]
+  tasks       RoadmapTask[]
 
   @@index([userId, createdAt])
 }
@@ -251,6 +258,18 @@ model RoadmapProblem {
   roadmap Roadmap @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
 
   @@id([roadmapId, problemId])
+}
+
+model RoadmapTask {
+  roadmapId String
+  taskId    String
+  topicName String
+  completed Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+
+  roadmap Roadmap @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+
+  @@id([roadmapId, taskId])
 }
 
 /// Single source of truth for Progress and Dashboard aggregation.

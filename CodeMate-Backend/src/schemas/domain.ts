@@ -5,16 +5,55 @@
  */
 import { z } from "zod";
 
-export const languageSchema = z.enum(["python", "java", "c", "cpp", "javascript", "typescript"]);
+export const languageSchema = z.enum([
+  "python",
+  "java",
+  "c",
+  "cpp",
+  "javascript",
+  "typescript",
+]);
 export type Language = z.infer<typeof languageSchema>;
 
 export const severitySchema = z.enum(["critical", "warning", "suggestion"]);
 export const difficultySchema = z.enum(["easy", "medium", "hard"]);
 export const prioritySchema = z.enum(["high", "medium", "low"]);
+export const supportedCodingPlatformSchema = z.enum([
+  "LeetCode",
+  "GeeksforGeeks",
+  "Codeforces",
+  "HackerRank",
+  "CodeChef",
+  "AtCoder",
+  "InterviewBit",
+  "CSES Problem Set",
+  "HackerEarth",
+  "SPOJ",
+  "NeetCode",
+]);
+export const codingPlatformSchema = supportedCodingPlatformSchema.or(
+  z.literal("Other"),
+);
+export const problemLinkTypeSchema = z.enum(["direct", "search"]);
+
+export const practiceProblemSchema = z.object({
+  title: z.string(),
+  platform: codingPlatformSchema,
+  difficulty: difficultySchema,
+  topic: z.string(),
+  pattern: z.string(),
+  practiceGoal: z.string(),
+  url: z.string().url(),
+  linkType: problemLinkTypeSchema,
+  estimatedMinutes: z.number().int().positive().optional(),
+});
 
 const pct = z.number().int().min(0).max(100);
 
-export const complexitySchema = z.object({ time: z.string(), space: z.string() });
+export const complexitySchema = z.object({
+  time: z.string(),
+  space: z.string(),
+});
 export type Complexity = z.infer<typeof complexitySchema>;
 
 export const bugSchema = z.object({
@@ -63,7 +102,12 @@ export type OptimizationCandidate = z.infer<typeof optimizationCandidateSchema>;
 
 export const optimizationResultSchema = z.object({
   id: z.string(),
-  original: z.object({ approach: z.string(), complexity: complexitySchema, code: z.string() }),
+  language: languageSchema,
+  original: z.object({
+    approach: z.string(),
+    complexity: complexitySchema,
+    code: z.string(),
+  }),
   candidates: z.array(optimizationCandidateSchema),
   recommendedId: z.string(),
   explanation: z.string(),
@@ -100,18 +144,27 @@ export type ConversionResult = z.infer<typeof conversionResultSchema>;
 export const benchmarkResultSchema = z.object({
   id: z.string(),
   metrics: z.array(
-    z.object({ label: z.string(), original: z.number(), optimized: z.number(), unit: z.string() }),
-  ),
-  executionSeries: z.array(
     z.object({
-      input: z.enum(["1K", "5K", "10K", "50K", "100K"]),
+      label: z.string(),
       original: z.number(),
       optimized: z.number(),
+      unit: z.string(),
+    }),
+  ),
+  candidate: z.object({ approach: z.string(), language: languageSchema }),
+  executionSeries: z.array(
+    z.object({
+      input: z.enum(["250", "500", "1K", "2.5K", "5K"]),
+      original: z.number(),
+      optimized: z.number(),
+      originalEstimated: z.boolean(),
+      optimizedEstimated: z.boolean(),
     }),
   ),
   originalComplexity: complexitySchema,
   optimizedComplexity: complexitySchema,
   improvementPercent: pct,
+  performanceChangePercent: z.number().finite().nullable(),
   verification: z.object({
     total: z.number().int(),
     passed: z.number().int(),
@@ -124,7 +177,12 @@ export const benchmarkResultSchema = z.object({
 });
 export type BenchmarkResult = z.infer<typeof benchmarkResultSchema>;
 
-export const historyStatusSchema = z.enum(["analyzed", "optimized", "converted", "benchmarked"]);
+export const historyStatusSchema = z.enum([
+  "analyzed",
+  "optimized",
+  "converted",
+  "benchmarked",
+]);
 export type HistoryStatus = z.infer<typeof historyStatusSchema>;
 
 export const codeHistoryItemSchema = z.object({
@@ -140,9 +198,20 @@ export const codeHistoryItemSchema = z.object({
 });
 export type CodeHistoryItem = z.infer<typeof codeHistoryItemSchema>;
 
-export const skillLevelSchema = z.enum(["strong", "practice", "weak", "missing"]);
+export const skillLevelSchema = z.enum([
+  "strong",
+  "practice",
+  "weak",
+  "missing",
+]);
 export type SkillLevel = z.infer<typeof skillLevelSchema>;
-export const skillCategorySchema = z.enum(["language", "framework", "database", "dsa", "tooling"]);
+export const skillCategorySchema = z.enum([
+  "language",
+  "framework",
+  "database",
+  "dsa",
+  "tooling",
+]);
 
 export const skillSchema = z.object({
   name: z.string(),
@@ -192,15 +261,18 @@ export const resumeRoadmapPhaseSchema = z.object({
       deliverable: z.string(),
     }),
   ),
-  leetcode: z.array(
-    z.object({
-      title: z.string(),
-      difficulty: difficultySchema,
-      pattern: z.string(),
-      practiceGoal: z.string(),
-      url: z.string().url(),
-    }),
-  ),
+  problems: z.array(practiceProblemSchema).optional(),
+  leetcode: z
+    .array(
+      z.object({
+        title: z.string(),
+        difficulty: difficultySchema,
+        pattern: z.string(),
+        practiceGoal: z.string(),
+        url: z.string().url(),
+      }),
+    )
+    .optional(),
 });
 
 export const resumeMatchRoadmapSchema = z.object({
@@ -209,7 +281,9 @@ export const resumeMatchRoadmapSchema = z.object({
   matchScore: pct,
   verdict: z.string(),
   radar: z.array(z.object({ skill: z.string(), resume: pct, required: pct })),
-  categoryFocus: z.array(z.object({ name: z.string(), value: z.number().int().min(0).max(100) })),
+  categoryFocus: z.array(
+    z.object({ name: z.string(), value: z.number().int().min(0).max(100) }),
+  ),
   gaps: z.array(z.object({ skill: z.string(), have: pct, need: pct })),
   phases: z.array(resumeRoadmapPhaseSchema),
   quickWins: z.array(z.string()),
@@ -227,20 +301,42 @@ export type CareerJobResult = z.infer<typeof careerJobResultSchema>;
 export const dsaProblemSchema = z.object({
   id: z.string(),
   title: z.string(),
-  platform: z.string(),
+  platform: codingPlatformSchema,
   difficulty: difficultySchema,
+  topic: z.string(),
   pattern: z.string(),
-  url: z.string(),
+  practiceGoal: z.string().optional(),
+  estimatedMinutes: z.number().int().min(5).max(240).optional(),
+  url: z.string().url(),
+  linkType: problemLinkTypeSchema,
   completed: z.boolean(),
   inRevision: z.boolean(),
 });
 export type DSAProblem = z.infer<typeof dsaProblemSchema>;
 
+export const roadmapDurationUnitSchema = z.enum(["days", "weeks", "months"]);
+export type RoadmapDurationUnit = z.infer<typeof roadmapDurationUnitSchema>;
+
+export const dsaPreparationTaskSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  estimatedMinutes: z.number().int().min(5).max(1200),
+  deliverable: z.string().optional(),
+  completed: z.boolean(),
+});
+export type DSAPreparationTask = z.infer<typeof dsaPreparationTaskSchema>;
+
 export const dsaTopicSchema = z.object({
   id: z.string(),
   name: z.string(),
+  description: z.string(),
+  keyTopics: z.array(z.string()),
+  tasks: z.array(dsaPreparationTaskSchema),
   weekStart: z.number().int().min(1),
   weekEnd: z.number().int().min(1),
+  durationLabel: z.string(),
+  estimatedMinutes: z.number().int().min(0),
   priority: prioritySchema,
   difficulty: difficultySchema,
   progress: pct,
@@ -263,7 +359,10 @@ export const dsaRoadmapSchema = z.object({
   id: z.string(),
   targetRole: z.string(),
   preparationLevel: z.string(),
-  weeks: z.number().int().min(1).max(52),
+  weeks: z.number().int().min(1).max(53),
+  durationValue: z.number().int().min(1).max(365),
+  durationUnit: roadmapDurationUnitSchema,
+  durationDays: z.number().int().min(1).max(365),
   topics: z.array(dsaTopicSchema),
   resources: z.array(learningResourceSchema),
 });
@@ -311,29 +410,97 @@ export const interviewReportSchema = z.object({
 });
 export type InterviewReport = z.infer<typeof interviewReportSchema>;
 
+export const liveInterviewReportSchema = z.object({
+  overall: pct,
+  scores: z.object({
+    technicalKnowledge: pct,
+    problemSolving: pct,
+    communication: pct,
+  }),
+  strengths: z.array(z.string().min(1)),
+  areasToImprove: z.array(z.string().min(1)),
+  questionsAsked: z.array(z.string().min(1)),
+  responseFeedback: z.array(
+    z.object({
+      question: z.string().min(1),
+      answer: z.string().min(1),
+      score: pct,
+      feedback: z.string().min(1),
+    }),
+  ),
+  suggestedTopics: z.array(z.string().min(1)),
+});
+export type LiveInterviewReport = z.infer<typeof liveInterviewReportSchema>;
+
 export const activityItemSchema = z.object({
   id: z.string(),
   label: z.string(),
   detail: z.string(),
   time: z.string(),
-  kind: z.enum(["analysis", "optimization", "conversion", "career", "interview"]),
+  kind: z.enum([
+    "analysis",
+    "optimization",
+    "conversion",
+    "career",
+    "interview",
+  ]),
 });
 export type ActivityItem = z.infer<typeof activityItemSchema>;
 
+export const progressRangeSchema = z.enum(["7d", "30d", "90d", "all"]);
+export type ProgressRange = z.infer<typeof progressRangeSchema>;
+
 export const progressReportSchema = z.object({
+  range: progressRangeSchema,
   problemsSolved: z.number().int().min(0),
   problemsAttempted: z.number().int().min(0),
   streak: z.number().int().min(0),
+  interviewsCompleted: z.number().int().min(0),
   averageInterviewScore: pct,
   optimizations: z.number().int().min(0),
   bugsFixed: z.number().int().min(0),
-  weeklyActivity: z.array(
-    z.object({ day: z.string(), problems: z.number().int(), analyses: z.number().int() }),
+  activityGranularity: z.enum(["day", "month"]),
+  activityHistory: z.array(
+    z.object({
+      date: z.string(),
+      problems: z.number().int().min(0),
+      analyses: z.number().int().min(0),
+      optimizations: z.number().int().min(0),
+      interviews: z.number().int().min(0),
+    }),
   ),
-  topicPerformance: z.array(z.object({ topic: z.string(), score: pct })),
-  interviewPerformance: z.array(z.object({ session: z.string(), score: pct })),
-  algorithmUsage: z.array(z.object({ name: z.string(), value: z.number().int() })),
-  algorithmDna: z.array(z.object({ pattern: z.string(), strength: pct })),
+  weeklyActivity: z.array(
+    z.object({
+      day: z.string(),
+      problems: z.number().int(),
+      analyses: z.number().int(),
+    }),
+  ),
+  topicPerformance: z.array(
+    z.object({
+      topic: z.string(),
+      score: pct,
+      evidence: z.number().int().min(1),
+    }),
+  ),
+  interviewPerformance: z.array(
+    z.object({
+      session: z.string(),
+      detail: z.string(),
+      date: z.string(),
+      score: pct,
+    }),
+  ),
+  algorithmUsage: z.array(
+    z.object({ name: z.string(), value: z.number().int() }),
+  ),
+  algorithmDna: z.array(
+    z.object({
+      pattern: z.string(),
+      strength: pct.nullable(),
+      sampleCount: z.number().int().min(0),
+    }),
+  ),
 });
 export type ProgressReport = z.infer<typeof progressReportSchema>;
 

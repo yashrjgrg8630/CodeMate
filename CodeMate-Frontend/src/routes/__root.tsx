@@ -101,7 +101,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@500;600;700&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Space+Grotesk:wght@500;600;700&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap",
       },
       { rel: "icon", href: "/codemate-favicon.svg", type: "image/svg+xml" },
     ],
@@ -114,11 +114,66 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <head>
         <HeadContent />
       </head>
       <body>
+        {/* SVG Optical Convex-Lens Refraction Filter (smooth curved edge bending) */}
+        <svg
+          aria-hidden="true"
+          style={{ position: "fixed", width: 0, height: 0, pointerEvents: "none" }}
+        >
+          <defs>
+            <filter
+              id="liquid-glass-refract"
+              x="-10%"
+              y="-10%"
+              width="120%"
+              height="120%"
+              colorInterpolationFilters="sRGB"
+            >
+              <feImage
+                preserveAspectRatio="none"
+                result="lensMap"
+                href={
+                  "data:image/svg+xml;utf8," +
+                  encodeURIComponent(
+                    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id="gx" x1="0%" y1="0%" x2="100%" y2="0%">
+                          <stop offset="0%" stop-color="rgb(245,128,128)"/>
+                          <stop offset="12%" stop-color="rgb(155,128,128)"/>
+                          <stop offset="50%" stop-color="rgb(128,128,128)"/>
+                          <stop offset="88%" stop-color="rgb(101,128,128)"/>
+                          <stop offset="100%" stop-color="rgb(11,128,128)"/>
+                        </linearGradient>
+                        <linearGradient id="gy" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stop-color="rgb(128,245,128)"/>
+                          <stop offset="22%" stop-color="rgb(128,150,128)"/>
+                          <stop offset="50%" stop-color="rgb(128,128,128)"/>
+                          <stop offset="78%" stop-color="rgb(128,106,128)"/>
+                          <stop offset="100%" stop-color="rgb(128,11,128)"/>
+                        </linearGradient>
+                      </defs>
+                      <rect width="200" height="60" fill="url(#gx)"/>
+                      <rect width="200" height="60" fill="url(#gy)" style="mix-blend-mode:overlay"/>
+                    </svg>`,
+                  )
+                }
+              />
+              <feDisplacementMap
+                in="SourceGraphic"
+                in2="lensMap"
+                scale="22"
+                xChannelSelector="R"
+                yChannelSelector="G"
+                result="warped"
+              />
+              <feGaussianBlur in="warped" stdDeviation="2.5" />
+            </filter>
+          </defs>
+        </svg>
         {children}
         <Scripts />
       </body>

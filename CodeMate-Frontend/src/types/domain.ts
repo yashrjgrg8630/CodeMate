@@ -67,6 +67,7 @@ export interface OptimizationCandidate {
 
 export interface OptimizationResult {
   id: string;
+  language: Language;
   original: {
     approach: string;
     complexity: Complexity;
@@ -105,10 +106,18 @@ export interface BenchmarkMetric {
 export interface BenchmarkResult {
   id: string;
   metrics: BenchmarkMetric[];
-  executionSeries: { input: string; original: number; optimized: number }[];
+  candidate: { approach: string; language: Language };
+  executionSeries: {
+    input: string;
+    original: number;
+    optimized: number;
+    originalEstimated: boolean;
+    optimizedEstimated: boolean;
+  }[];
   originalComplexity: Complexity;
   optimizedComplexity: Complexity;
   improvementPercent: number;
+  performanceChangePercent: number | null;
   verification: { total: number; passed: number; failed: number };
   trustScore: { correctness: number; optimization: number; benchmark: number };
   isMockData: boolean;
@@ -167,23 +176,70 @@ export interface CareerJobResult {
 
 export type Priority = "high" | "medium" | "low";
 export type Difficulty = "easy" | "medium" | "hard";
+export const CODING_PLATFORMS = [
+  "LeetCode",
+  "GeeksforGeeks",
+  "Codeforces",
+  "HackerRank",
+  "CodeChef",
+  "AtCoder",
+  "InterviewBit",
+  "CSES Problem Set",
+  "HackerEarth",
+  "SPOJ",
+  "NeetCode",
+] as const;
+export type CodingPlatform = (typeof CODING_PLATFORMS)[number] | "Other";
+export type ProblemLinkType = "direct" | "search";
+
+export interface PracticeProblem {
+  title: string;
+  platform: CodingPlatform;
+  difficulty: Difficulty;
+  topic: string;
+  pattern: string;
+  practiceGoal: string;
+  url: string;
+  linkType: ProblemLinkType;
+  estimatedMinutes?: number;
+}
 
 export interface DSAProblem {
   id: string;
   title: string;
-  platform: string;
+  platform: CodingPlatform;
   difficulty: Difficulty;
+  topic: string;
   pattern: string;
+  practiceGoal: string;
+  estimatedMinutes?: number;
   url: string;
+  linkType: ProblemLinkType;
   completed: boolean;
   inRevision: boolean;
+}
+
+export type RoadmapDurationUnit = "days" | "weeks" | "months";
+
+export interface DSAPreparationTask {
+  id: string;
+  title: string;
+  description: string;
+  estimatedMinutes: number;
+  deliverable?: string;
+  completed: boolean;
 }
 
 export interface DSATopic {
   id: string;
   name: string;
+  description: string;
+  keyTopics: string[];
+  tasks: DSAPreparationTask[];
   weekStart: number;
   weekEnd: number;
+  durationLabel: string;
+  estimatedMinutes: number;
   priority: Priority;
   difficulty: Difficulty;
   progress: number;
@@ -205,6 +261,9 @@ export interface DSARoadmap {
   targetRole: string;
   preparationLevel: string;
   weeks: number;
+  durationValue: number;
+  durationUnit: RoadmapDurationUnit;
+  durationDays: number;
   topics: DSATopic[];
   resources: LearningResource[];
 }
@@ -240,6 +299,30 @@ export interface InterviewReport {
   recommendations: string[];
 }
 
+export type LiveInterviewDomain =
+  "AI/ML" | "DSA" | "Python" | "Java" | "C++" | "Backend" | "General Software Engineering";
+export type LiveInterviewDifficulty = "Beginner" | "Intermediate" | "Advanced";
+export type LiveInterviewDuration = 15 | 30 | 45;
+
+export interface LiveInterviewReport {
+  overall: number;
+  scores: {
+    technicalKnowledge: number;
+    problemSolving: number;
+    communication: number;
+  };
+  strengths: string[];
+  areasToImprove: string[];
+  questionsAsked: string[];
+  responseFeedback: {
+    question: string;
+    answer: string;
+    score: number;
+    feedback: string;
+  }[];
+  suggestedTopics: string[];
+}
+
 export interface InterviewSession {
   id: string;
   role: string;
@@ -256,17 +339,27 @@ export interface ActivityItem {
 }
 
 export interface ProgressReport {
+  range: "7d" | "30d" | "90d" | "all";
   problemsSolved: number;
   problemsAttempted: number;
   streak: number;
+  interviewsCompleted: number;
   averageInterviewScore: number;
   optimizations: number;
   bugsFixed: number;
+  activityGranularity: "day" | "month";
+  activityHistory: {
+    date: string;
+    problems: number;
+    analyses: number;
+    optimizations: number;
+    interviews: number;
+  }[];
   weeklyActivity: { day: string; problems: number; analyses: number }[];
-  topicPerformance: { topic: string; score: number }[];
-  interviewPerformance: { session: string; score: number }[];
+  topicPerformance: { topic: string; score: number; evidence: number }[];
+  interviewPerformance: { session: string; detail: string; date: string; score: number }[];
   algorithmUsage: { name: string; value: number }[];
-  algorithmDna: { pattern: string; strength: number }[];
+  algorithmDna: { pattern: string; strength: number | null; sampleCount: number }[];
 }
 
 export interface DashboardStats {
@@ -299,7 +392,8 @@ export interface ResumeRoadmapPhase {
     timebox: string;
     deliverable: string;
   }[];
-  leetcode: {
+  problems?: PracticeProblem[];
+  leetcode?: {
     title: string;
     difficulty: Difficulty;
     pattern: string;

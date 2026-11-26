@@ -53,6 +53,7 @@ export async function optimizeCode(
 
   const result: OptimizationResult = {
     id: optimizationId,
+    language: input.language,
     original: { approach: ai.original.approach, complexity: ai.original.complexity, code: input.code },
     candidates,
     recommendedId: recommended.id,

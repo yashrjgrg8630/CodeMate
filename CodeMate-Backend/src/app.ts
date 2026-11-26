@@ -29,12 +29,20 @@ export function createApp(deps: AppDeps): Hono<AppBindings> {
   const limiter = new MemoryRateLimiter();
   const auth = new AuthService(env, db);
 
+  const isAllowedOrigin = (origin: string): boolean => {
+    if (origin === env.FRONTEND_ORIGIN) return true;
+    if (env.NODE_ENV === "development") {
+      return /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|172\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin);
+    }
+    return false;
+  };
+
   app.use("*", requestId);
   app.use("*", secureHeaders());
   app.use(
     "/api/*",
     cors({
-      origin: env.FRONTEND_ORIGIN,
+      origin: (origin) => (origin && isAllowedOrigin(origin) ? origin : env.FRONTEND_ORIGIN),
       credentials: true,
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
@@ -42,7 +50,7 @@ export function createApp(deps: AppDeps): Hono<AppBindings> {
     }),
   );
   app.use("/api/*", noStore);
-  app.use("/api/*", originGuard(env.FRONTEND_ORIGIN));
+  app.use("/api/*", originGuard(isAllowedOrigin));
   app.use(
     "/api/*",
     rateLimit({

@@ -2,27 +2,20 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeftRight,
-  Bug,
-  Gauge,
+  ArrowRight,
+  ArrowUpRight,
+  BriefcaseBusiness,
   MessagesSquare,
+  Route as RouteIcon,
   Sparkles,
   Terminal,
   Trash2,
-  Wand2,
+  type LucideIcon,
 } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { clearActivities, deleteActivity, getDashboard } from "@/services/progressService";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  BackendBadge,
-  EmptyState,
-  LoadingSkeleton,
-  PageHeader,
-  RequestError,
-  StatCard,
-} from "@/components/app/shared";
+import { getCurrentUser } from "@/services/authService";
+import { LoadingSkeleton, RequestError } from "@/components/app/shared";
+import type { ActivityItem, DashboardData } from "@/types/domain";
 
 export const Route = createFileRoute("/_app/dashboard")({
   head: () => ({
@@ -43,15 +36,56 @@ export const Route = createFileRoute("/_app/dashboard")({
   component: DashboardPage,
 });
 
-const QUICK_ACTIONS = [
-  { to: "/analyzer", label: "Analyze code", icon: Terminal },
-  { to: "/optimizer", label: "Optimize", icon: Sparkles },
-  { to: "/converter", label: "Convert language", icon: ArrowLeftRight },
-  { to: "/interview", label: "Mock interview", icon: MessagesSquare },
+const TOOLS = [
+  {
+    to: "/analyzer",
+    label: "Code Analyzer",
+    description: "Find patterns, complexity, and bugs in your code.",
+    icon: Terminal,
+  },
+  {
+    to: "/optimizer",
+    label: "Solution Optimizer",
+    description: "Compare alternatives and verify improvements.",
+    icon: Sparkles,
+  },
+  {
+    to: "/converter",
+    label: "Language Converter",
+    description: "Translate code while keeping the intent intact.",
+    icon: ArrowLeftRight,
+  },
+  {
+    to: "/career",
+    label: "Job Analyzer",
+    description: "Map your experience to a role’s requirements.",
+    icon: BriefcaseBusiness,
+  },
+  {
+    to: "/roadmap",
+    label: "DSA Roadmap",
+    description: "Build a steady, trackable problem-solving plan.",
+    icon: RouteIcon,
+  },
+  {
+    to: "/interview",
+    label: "Mock Interview",
+    description: "Practice a live, adaptive technical interview.",
+    icon: MessagesSquare,
+  },
 ] as const;
+
+const ACTIVITY_ICONS: Record<ActivityItem["kind"], LucideIcon> = {
+  analysis: Terminal,
+  optimization: Sparkles,
+  conversion: ArrowLeftRight,
+  career: BriefcaseBusiness,
+  interview: MessagesSquare,
+};
 
 function DashboardPage() {
   const queryClient = useQueryClient();
+  const userQuery = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser });
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["dashboard"],
     queryFn: getDashboard,
@@ -61,7 +95,7 @@ function DashboardPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteActivity,
     onSuccess: (_, activityId) => {
-      queryClient.setQueryData(["dashboard"], (current: typeof data | undefined) => {
+      queryClient.setQueryData(["dashboard"], (current: DashboardData | undefined) => {
         if (!current) return current;
         return {
           ...current,
@@ -75,7 +109,7 @@ function DashboardPage() {
   const clearAllMutation = useMutation({
     mutationFn: clearActivities,
     onSuccess: () => {
-      queryClient.setQueryData(["dashboard"], (current: typeof data | undefined) => {
+      queryClient.setQueryData(["dashboard"], (current: DashboardData | undefined) => {
         if (!current) return current;
         return {
           ...current,
@@ -86,178 +120,217 @@ function DashboardPage() {
     },
   });
 
-  const handleDeleteActivity = (activityId: string) => {
-    deleteMutation.mutate(activityId);
-  };
-
-  const handleClearActivities = () => {
-    clearAllMutation.mutate();
-  };
+  const firstName = userQuery.data?.name?.trim().split(/\s+/)[0];
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Dashboard"
-        description="A single view of your code quality work and interview preparation."
-        actions={<BackendBadge />}
-      />
+    <div className="dashboard-page">
+      <header className="dashboard-welcome">
+        <div>
+          <p className="dashboard-eyebrow">YOUR CODEMATE WORKSPACE</p>
+          <h1>{firstName ? `Welcome back, ${firstName}.` : "Welcome back."}</h1>
+          <p className="dashboard-welcome__copy">
+            Your code work and interview preparation, in one place.
+          </p>
+        </div>
+        <Link to="/analyzer" className="dashboard-analyze-button">
+          <Terminal size={17} />
+          <span>Analyze code</span>
+          <ArrowRight size={16} />
+        </Link>
+      </header>
 
       {isError ? <RequestError onRetry={() => void refetch()} /> : null}
-      {!isError && (isLoading || !data) ? <LoadingSkeleton rows={4} /> : null}
+      {!isError && (isLoading || !data) ? (
+        <div className="dashboard-loading" aria-label="Loading dashboard data">
+          <LoadingSkeleton rows={3} />
+        </div>
+      ) : null}
+
       {!isError && data ? (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <StatCard
-              label="Problems analyzed"
-              value={data.stats.problemsAnalyzed}
-              icon={<Terminal className="size-4" />}
-            />
-            <StatCard
-              label="Bugs detected"
-              value={data.stats.bugsDetected}
-              icon={<Bug className="size-4" />}
-            />
-            <StatCard
-              label="Optimizations found"
-              value={data.stats.optimizationsFound}
-              icon={<Sparkles className="size-4" />}
-            />
-            <StatCard
-              label="Code conversions"
-              value={data.stats.codeConversions}
-              icon={<ArrowLeftRight className="size-4" />}
-            />
-            <StatCard
-              label="Problems solved"
-              value={data.stats.problemsSolved}
-              icon={<Gauge className="size-4" />}
-            />
-            <StatCard
-              label="Interview score"
-              value={`${data.stats.interviewScore}/100`}
-              icon={<MessagesSquare className="size-4" />}
-            />
+        <section className="dashboard-overview" aria-label="Workspace overview">
+          <article className="dashboard-primary-stat">
+            <div className="dashboard-primary-stat__heading">
+              <p>Problems analyzed</p>
+              <Terminal size={18} aria-hidden="true" />
+            </div>
+            <p className="dashboard-primary-stat__value metric">{data.stats.problemsAnalyzed}</p>
+            <p className="dashboard-primary-stat__caption">Analyses saved to your workspace</p>
+          </article>
+
+          <div className="dashboard-supporting-stats">
+            {[
+              { label: "Bugs found", value: data.stats.bugsDetected },
+              { label: "Optimizations", value: data.stats.optimizationsFound },
+              { label: "Conversions", value: data.stats.codeConversions },
+              { label: "Problems solved", value: data.stats.problemsSolved },
+              { label: "Interview score", value: `${data.stats.interviewScore}/100` },
+            ].map((stat) => (
+              <div className="dashboard-support-stat" key={stat.label}>
+                <p>{stat.label}</p>
+                <span className="metric">{stat.value}</span>
+              </div>
+            ))}
           </div>
+        </section>
+      ) : null}
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-display text-xl">Quick actions</CardTitle>
-              <CardDescription>Jump straight into a tool.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {QUICK_ACTIONS.map((action) => (
-                <Button key={action.to} asChild variant="secondary">
-                  <Link to={action.to}>
-                    <action.icon className="size-4" />
-                    {action.label}
-                  </Link>
-                </Button>
-              ))}
-            </CardContent>
-          </Card>
+      <section className="dashboard-tools-section" aria-labelledby="dashboard-tools-title">
+        <div className="dashboard-section-heading">
+          <div>
+            <p className="dashboard-eyebrow">PICK UP A THREAD</p>
+            <h2 id="dashboard-tools-title">Your tools</h2>
+          </div>
+          <p>Choose the next step that fits your work.</p>
+        </div>
 
-          <div className="grid gap-4 lg:grid-cols-5">
-            <Card className="lg:col-span-3">
-              <CardHeader>
-                <CardTitle className="font-display text-xl">Weakness heatmap</CardTitle>
-                <CardDescription>Confidence score per DSA topic.</CardDescription>
-              </CardHeader>
-              <CardContent className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.weaknessHeatmap} layout="vertical" margin={{ left: 24 }}>
-                    <CartesianGrid horizontal={false} stroke="var(--border)" />
-                    <XAxis
-                      type="number"
-                      domain={[0, 100]}
-                      stroke="var(--muted-foreground)"
-                      fontSize={12}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="topic"
-                      width={120}
-                      stroke="var(--muted-foreground)"
-                      fontSize={12}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: "var(--popover)",
-                        border: "1px solid var(--border)",
-                        borderRadius: 8,
-                        color: "var(--popover-foreground)",
-                      }}
-                    />
-                    <Bar dataKey="score" fill="var(--chart-1)" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+        <div className="dashboard-tool-grid">
+          <Link to="/analyzer" className="dashboard-tool-feature">
+            <div className="dashboard-tool-feature__top">
+              <span className="dashboard-tool-feature__icon">
+                <Terminal size={21} />
+              </span>
+              <ArrowUpRight size={19} />
+            </div>
+            <div className="dashboard-tool-feature__body">
+              <p className="dashboard-tool-feature__overline">START WITH THE CODE</p>
+              <h3>Code Analyzer</h3>
+              <p>Trace patterns, complexity, and bugs in a solution you’re working through.</p>
+            </div>
+            <span className="dashboard-tool-feature__action">
+              Open analyzer <ArrowRight size={15} />
+            </span>
+          </Link>
 
-            <Card className="lg:col-span-2">
-              <CardHeader className="flex flex-row items-start justify-between gap-3">
-                <div>
-                  <CardTitle className="font-display text-xl">Recent activity</CardTitle>
-                  <CardDescription>Latest actions in your workspace.</CardDescription>
-                </div>
+          <div className="dashboard-tool-list" aria-label="More CodeMate tools">
+            {TOOLS.slice(1).map((tool) => (
+              <Link to={tool.to} className="dashboard-tool-link" key={tool.to}>
+                <span className="dashboard-tool-link__icon">
+                  <tool.icon size={17} />
+                </span>
+                <span className="dashboard-tool-link__copy">
+                  <span className="dashboard-tool-link__name">{tool.label}</span>
+                  <span className="dashboard-tool-link__description">{tool.description}</span>
+                </span>
+                <ArrowUpRight size={15} className="dashboard-tool-link__arrow" />
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {!isError && data ? (
+        <div className="dashboard-insights">
+          <section className="dashboard-activity" aria-labelledby="dashboard-activity-title">
+            <div className="dashboard-section-heading dashboard-section-heading--compact">
+              <div>
+                <p className="dashboard-eyebrow">FROM YOUR WORKSPACE</p>
+                <h2 id="dashboard-activity-title">Recent activity</h2>
+              </div>
+              <div className="dashboard-activity-actions">
+                <Link to="/history" className="dashboard-subtle-link">
+                  View history <ArrowUpRight size={14} />
+                </Link>
                 {data.activity.length > 0 ? (
-                  <Button
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-muted-foreground hover:text-destructive"
-                    onClick={handleClearActivities}
-                    disabled={clearAllMutation.isPending}
+                    className="dashboard-clear-button"
+                    onClick={() => clearAllMutation.mutate()}
+                    disabled={clearAllMutation.isPending || deleteMutation.isPending}
                   >
-                    <Trash2 className="size-4" />
-                    Clear all
-                  </Button>
+                    {clearAllMutation.isPending ? "Clearing…" : "Clear all"}
+                  </button>
                 ) : null}
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {data.activity.length === 0 ? (
-                  <EmptyState
-                    title="No activity yet"
-                    description="Your activity will appear here after your account is connected and you start using the tools."
-                  />
-                ) : (
-                  data.activity.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-start justify-between gap-3 border-b border-border pb-3 last:border-0"
-                    >
-                      <div className="flex min-w-0 flex-1 gap-3">
-                        <Wand2 className="mt-0.5 size-4 shrink-0 text-primary" />
-                        <div className="min-w-0 space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-sm font-medium">{item.label}</p>
-                            <Badge variant="outline" className="text-[10px] uppercase">
-                              {item.kind}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground">{item.detail}</p>
-                          <p className="text-[11px] text-muted-foreground">{item.time}</p>
-                        </div>
-                      </div>
+              </div>
+            </div>
 
-                      <Button
+            {data.activity.length === 0 ? (
+              <div className="dashboard-empty-activity">
+                <div>
+                  <p className="dashboard-empty-activity__title">A clean slate.</p>
+                  <p>Run an analysis and your recent work will show up here.</p>
+                </div>
+                <Link to="/analyzer">
+                  Analyze code <ArrowRight size={15} />
+                </Link>
+              </div>
+            ) : (
+              <ol className="dashboard-activity-list">
+                {data.activity.map((item) => {
+                  const Icon = ACTIVITY_ICONS[item.kind];
+                  return (
+                    <li className="dashboard-activity-item" key={item.id}>
+                      <span className="dashboard-activity-item__icon">
+                        <Icon size={15} aria-hidden="true" />
+                      </span>
+                      <div className="dashboard-activity-item__content">
+                        <p className="dashboard-activity-item__title">{item.label}</p>
+                        {item.detail ? (
+                          <p className="dashboard-activity-item__detail">{item.detail}</p>
+                        ) : null}
+                        <span className="dashboard-activity-item__kind">{item.kind}</span>
+                      </div>
+                      <span className="dashboard-activity-item__time">{item.time}</span>
+                      <button
                         type="button"
-                        variant="ghost"
-                        size="icon"
+                        className="dashboard-activity-item__delete"
                         aria-label={`Delete ${item.label}`}
                         title="Delete activity"
-                        className="shrink-0 text-muted-foreground hover:text-destructive"
-                        onClick={() => handleDeleteActivity(item.id)}
-                        disabled={deleteMutation.isPending && deleteMutation.variables === item.id}
+                        onClick={() => deleteMutation.mutate(item.id)}
+                        disabled={deleteMutation.isPending || clearAllMutation.isPending}
                       >
-                        <Trash2 className="size-4" />
-                      </Button>
+                        <Trash2 size={15} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </section>
+
+          <section className="dashboard-readiness" aria-labelledby="dashboard-readiness-title">
+            <div className="dashboard-section-heading dashboard-section-heading--compact">
+              <div>
+                <p className="dashboard-eyebrow">BASED ON YOUR ACTIVITY</p>
+                <h2 id="dashboard-readiness-title">Topic readiness</h2>
+              </div>
+            </div>
+            <p className="dashboard-readiness__intro">
+              Scores reflect your analyses, interview answers, and roadmap progress.
+            </p>
+
+            {data.weaknessHeatmap.length > 0 ? (
+              <div className="dashboard-readiness-list" role="list">
+                {data.weaknessHeatmap.map(({ topic, score }) => (
+                  <div className="dashboard-readiness-row" role="listitem" key={topic}>
+                    <span className="dashboard-readiness-row__topic">{topic}</span>
+                    <div
+                      className="dashboard-readiness-row__track"
+                      role="meter"
+                      aria-label={`${topic} readiness`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={score}
+                    >
+                      <span style={{ width: `${score}%` }} />
                     </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </>
+                    <span className="dashboard-readiness-row__score metric">{score}%</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="dashboard-readiness-empty">
+                <p>No topic scores yet.</p>
+                <span>
+                  As you analyze code, complete roadmap problems, or practice interviews, your
+                  profile will take shape.
+                </span>
+                <Link to="/roadmap">
+                  Open DSA Roadmap <ArrowRight size={14} />
+                </Link>
+              </div>
+            )}
+          </section>
+        </div>
       ) : null}
     </div>
   );

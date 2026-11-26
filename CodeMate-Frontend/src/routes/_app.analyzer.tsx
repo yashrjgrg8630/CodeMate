@@ -1,12 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
-import { AlertTriangle, Bug, Info, Play, ShieldAlert } from "lucide-react";
+import { useRef, useState } from "react";
+import {
+  AlertTriangle,
+  Bug,
+  CheckCircle2,
+  Code2,
+  Info,
+  Loader2,
+  Play,
+  RefreshCw,
+  ScanSearch,
+  ShieldAlert,
+} from "lucide-react";
 import { analyzeCode, SAMPLE_CODE } from "@/services/analysisService";
 import { LANGUAGES, type Language } from "@/types/domain";
+import { useBackgroundTask } from "@/hooks/use-background-task";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -15,14 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  CodeBlock,
-  EmptyState,
-  LoadingState,
-  BackendBadge,
-  PageHeader,
-  ScoreBar,
-} from "@/components/app/shared";
+import { CodeBlock } from "@/components/app/shared";
 
 export const Route = createFileRoute("/_app/analyzer")({
   head: () => ({
@@ -49,152 +52,320 @@ const SEVERITY_ICON = {
   suggestion: Info,
 } as const;
 
+const FILE_EXT: Record<Language, string> = {
+  python: "solution.py",
+  java: "Solution.java",
+  c: "solution.c",
+  cpp: "solution.cpp",
+  javascript: "solution.js",
+  typescript: "solution.ts",
+};
+
 function AnalyzerPage() {
   const [language, setLanguage] = useState<Language>("python");
   const [code, setCode] = useState("");
-  const analysis = useMutation({ mutationFn: analyzeCode });
+  const lineNumbersRef = useRef<HTMLDivElement>(null);
+  const analysis = useBackgroundTask<Awaited<ReturnType<typeof analyzeCode>>>("analyzer");
 
-  function loadSample(nextLanguage = language) {
-    setLanguage(nextLanguage);
-    setCode(SAMPLE_CODE[nextLanguage]);
+  function loadSample() {
+    setCode(SAMPLE_CODE[language]);
     analysis.reset();
   }
 
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Code Analyzer"
-        description="Detect the algorithm pattern, estimate complexity and surface bugs before you submit."
-        actions={<BackendBadge />}
-      />
+  function runAnalysis() {
+    if (!code.trim() || analysis.isPending) return;
+    analysis.run(() => analyzeCode({ code, language }));
+  }
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
-            <div>
-              <CardTitle className="font-display text-xl">Your code</CardTitle>
-              <CardDescription>Paste a solution or load a sample.</CardDescription>
+  const lineCount = code.split("\n").length;
+  const languageLabel = LANGUAGES.find((item) => item.id === language)?.label ?? language;
+  const healthValue = analysis.data ? Math.min(100, Math.max(0, analysis.data.codeHealth)) : 0;
+
+  return (
+    <div className="analyzer-page">
+      <header className="analyzer-heading">
+        <div>
+          <p className="analyzer-heading__eyebrow">
+            WORKSPACE <span>/</span> CODE ANALYSIS
+          </p>
+          <h1>Code Analyzer</h1>
+          <p>Understand the complexity, patterns, and potential issues in a solution.</p>
+        </div>
+      </header>
+
+      <section className="analyzer-workspace" aria-label="Code analysis workspace">
+        <div className="analyzer-editor-pane">
+          <div className="analyzer-toolbar">
+            <div className="analyzer-file-tab">
+              <Code2 size={16} aria-hidden="true" />
+              <span>{FILE_EXT[language]}</span>
             </div>
-            <Select
-              value={language}
-              onValueChange={(value) => {
-                const next = value as Language;
-                loadSample(next);
-              }}
-            >
-              <SelectTrigger className="w-36">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {LANGUAGES.map((l) => (
-                  <SelectItem key={l.id} value={l.id}>
-                    {l.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Textarea
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              spellCheck={false}
-              className="min-h-[340px] font-mono text-xs"
-              aria-label="Code input"
-            />
-            <div className="flex flex-wrap gap-2">
-              <Button
-                onClick={() => analysis.mutate({ code, language })}
-                disabled={analysis.isPending || !code.trim()}
+
+            <div className="analyzer-toolbar__actions">
+              <Select
+                value={language}
+                onValueChange={(value) => {
+                  const nextLanguage = LANGUAGES.find((item) => item.id === value)?.id;
+                  if (!nextLanguage) return;
+                  setLanguage(nextLanguage);
+                  if (!analysis.isIdle) analysis.reset();
+                }}
               >
-                <Play className="size-4" />
-                {analysis.isPending ? "Analyzing…" : "Analyze code"}
-              </Button>
-              <Button variant="ghost" onClick={() => loadSample()}>
+                <SelectTrigger
+                  className="analyzer-language-select"
+                  aria-label="Programming language"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LANGUAGES.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={loadSample}
+                className="analyzer-sample-button"
+              >
                 Load sample
               </Button>
+              <Button
+                type="button"
+                onClick={runAnalysis}
+                disabled={analysis.isPending || !code.trim()}
+                className="analyzer-run-button"
+              >
+                {analysis.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Play className="size-4" />
+                )}
+                {analysis.isPending ? "Analyzing…" : "Analyze code"}
+              </Button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        <div className="space-y-4">
-          {analysis.isPending ? <LoadingState label="Analyzing your code…" /> : null}
-
-          {!analysis.data && !analysis.isPending ? (
-            <EmptyState
-              title="No analysis yet"
-              description="Run the analyzer to see complexity, the detected pattern and any bugs found in your code."
+          <div className="analyzer-editor">
+            <div className="analyzer-line-numbers" ref={lineNumbersRef} aria-hidden="true">
+              <pre>{Array.from({ length: lineCount }, (_, index) => index + 1).join("\n")}</pre>
+            </div>
+            <Textarea
+              value={code}
+              onChange={(event) => {
+                setCode(event.target.value);
+                if (!analysis.isIdle) analysis.reset();
+              }}
+              onScroll={(event) => {
+                if (lineNumbersRef.current) {
+                  lineNumbersRef.current.scrollTop = event.currentTarget.scrollTop;
+                }
+              }}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoComplete="off"
+              autoCorrect="off"
+              wrap="off"
+              placeholder="Paste code here, or load a sample to get started."
+              className="analyzer-textarea"
+              aria-label="Code input"
             />
-          ) : null}
+          </div>
 
-          {analysis.data ? (
-            <>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="font-display text-xl">Overview</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <ScoreBar label="Code health" value={analysis.data.codeHealth} />
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div className="rounded-md border border-border p-3">
-                      <p className="text-xs text-muted-foreground">Time complexity</p>
-                      <p className="metric text-lg">{analysis.data.complexity.time}</p>
-                    </div>
-                    <div className="rounded-md border border-border p-3">
-                      <p className="text-xs text-muted-foreground">Space complexity</p>
-                      <p className="metric text-lg">{analysis.data.complexity.space}</p>
-                    </div>
-                  </div>
-                  <div className="rounded-md border border-border p-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium">{analysis.data.pattern.name}</p>
-                      <Badge variant="secondary">{analysis.data.pattern.confidence}% match</Badge>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {analysis.data.pattern.description}
-                    </p>
-                  </div>
-                  <div className="rounded-md border border-primary/40 bg-primary/5 p-3 text-sm">
-                    <p className="font-medium">
-                      {analysis.data.optimizationHint.approach}:{" "}
-                      {analysis.data.optimizationHint.from} → {analysis.data.optimizationHint.to}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {analysis.data.optimizationHint.summary}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="font-display text-xl">
-                    Bugs & issues ({analysis.data.bugs.length})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {analysis.data.bugs.map((bug) => {
-                    const Icon = SEVERITY_ICON[bug.severity] ?? Bug;
-                    return (
-                      <div key={bug.id} className="rounded-md border border-border p-3">
-                        <div className="flex items-center gap-2">
-                          <Icon className="size-4 text-warning" />
-                          <p className="text-sm font-medium">{bug.title}</p>
-                          <Badge variant="outline" className="ml-auto text-[10px] uppercase">
-                            line {bug.line} · {bug.severity}
-                          </Badge>
-                        </div>
-                        <p className="mt-2 text-xs text-muted-foreground">{bug.explanation}</p>
-                        <CodeBlock className="mt-2 max-h-40" code={bug.suggestedFix} />
-                      </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-            </>
-          ) : null}
+          <footer className="analyzer-statusbar" aria-live="polite">
+            <span>
+              {lineCount} {lineCount === 1 ? "line" : "lines"}
+              <i />
+              {code.length} characters
+            </span>
+            <span>{languageLabel}</span>
+          </footer>
         </div>
-      </div>
+
+        <aside className="analyzer-diagnostics" aria-labelledby="analyzer-diagnostics-title">
+          <header className="analyzer-diagnostics__header">
+            <div>
+              <p className="analyzer-diagnostics__eyebrow">INSPECTOR</p>
+              <h2 id="analyzer-diagnostics-title">Diagnostic output</h2>
+            </div>
+            <span
+              className={`analyzer-state${analysis.isError ? " analyzer-state--error" : ""}${analysis.data ? " analyzer-state--complete" : ""}`}
+              role="status"
+            >
+              <i />
+              {analysis.isPending
+                ? "RUNNING"
+                : analysis.isError
+                  ? "FAILED"
+                  : analysis.data
+                    ? "COMPLETE"
+                    : "READY"}
+            </span>
+          </header>
+
+          <div className="analyzer-diagnostics__body">
+            {analysis.isPending ? (
+              <div className="analyzer-progress" role="status" aria-live="polite">
+                <span className="analyzer-progress__icon">
+                  <Loader2 size={19} className="animate-spin" />
+                </span>
+                <h3>Reading your code</h3>
+                <p>Evaluating its structure, complexity, and possible issues.</p>
+                <div className="analyzer-progress__bars" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </div>
+              </div>
+            ) : analysis.isError ? (
+              <div className="analyzer-error" role="alert">
+                <span className="analyzer-error__icon">
+                  <AlertTriangle size={18} />
+                </span>
+                <h3>Analysis didn’t complete</h3>
+                <p>{analysis.error?.message ?? "The analysis failed without an error message."}</p>
+                <div className="analyzer-error__actions">
+                  <Button
+                    type="button"
+                    onClick={runAnalysis}
+                    disabled={!code.trim()}
+                    className="analyzer-retry-button"
+                  >
+                    <RefreshCw size={15} />
+                    Retry analysis
+                  </Button>
+                  {!code.trim() ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={loadSample}
+                      className="analyzer-empty__action"
+                    >
+                      <Code2 size={15} />
+                      Load {languageLabel} sample
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ) : analysis.data ? (
+              <div className="analyzer-results">
+                <section className="analyzer-result-health">
+                  <div className="analyzer-result-health__label">
+                    <p>CODE HEALTH</p>
+                    <strong>{analysis.data.codeHealth}%</strong>
+                  </div>
+                  <div
+                    className="analyzer-result-health__track"
+                    role="meter"
+                    aria-label="Code health"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={healthValue}
+                  >
+                    <span style={{ width: `${healthValue}%` }} />
+                  </div>
+                </section>
+
+                <section className="analyzer-complexity" aria-label="Complexity">
+                  <div>
+                    <p>TIME COMPLEXITY</p>
+                    <strong>{analysis.data.complexity.time}</strong>
+                  </div>
+                  <div>
+                    <p>SPACE COMPLEXITY</p>
+                    <strong>{analysis.data.complexity.space}</strong>
+                  </div>
+                </section>
+
+                <section className="analyzer-result-section">
+                  <div className="analyzer-result-section__heading">
+                    <h3>Detected pattern</h3>
+                    <Badge variant="secondary" className="analyzer-confidence-badge">
+                      {analysis.data.pattern.confidence}% match
+                    </Badge>
+                  </div>
+                  <p className="analyzer-pattern-name">{analysis.data.pattern.name}</p>
+                  <p className="analyzer-pattern-category">{analysis.data.pattern.category}</p>
+                  <p>{analysis.data.pattern.description}</p>
+                </section>
+
+                <section className="analyzer-optimization">
+                  <p className="analyzer-optimization__eyebrow">OPTIMIZATION DIRECTION</p>
+                  <h3>{analysis.data.optimizationHint.approach}</h3>
+                  <p className="analyzer-optimization__complexity">
+                    {analysis.data.optimizationHint.from}
+                    <span aria-hidden="true"> → </span>
+                    {analysis.data.optimizationHint.to}
+                  </p>
+                  <p>{analysis.data.optimizationHint.summary}</p>
+                </section>
+
+                <section className="analyzer-result-section analyzer-issues">
+                  <div className="analyzer-result-section__heading">
+                    <h3>Findings</h3>
+                    <span>{analysis.data.bugs.length}</span>
+                  </div>
+                  {analysis.data.bugs.length === 0 ? (
+                    <p className="analyzer-no-issues">
+                      <CheckCircle2 size={16} />
+                      No bugs detected in this snippet.
+                    </p>
+                  ) : (
+                    <div className="analyzer-issue-list">
+                      {analysis.data.bugs.map((bug) => {
+                        const Icon = SEVERITY_ICON[bug.severity] ?? Bug;
+                        return (
+                          <article className="analyzer-issue" key={bug.id}>
+                            <div className="analyzer-issue__heading">
+                              <Icon size={15} aria-hidden="true" />
+                              <h4>{bug.title}</h4>
+                              <span>
+                                L{bug.line} · {bug.severity}
+                              </span>
+                            </div>
+                            <p>{bug.explanation}</p>
+                            <CodeBlock
+                              className="analyzer-fix-code"
+                              label="Suggested fix"
+                              code={bug.suggestedFix}
+                            />
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              </div>
+            ) : (
+              <div className="analyzer-empty">
+                <span className="analyzer-empty__icon">
+                  <ScanSearch size={22} />
+                </span>
+                <p className="analyzer-empty__eyebrow">ANALYSIS WORKSPACE</p>
+                <h3>Results appear here</h3>
+                <p>
+                  Add a code sample or paste a solution, then run Analyze code to see its
+                  complexity, detected pattern, and findings.
+                </p>
+                {!code.trim() ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={loadSample}
+                    className="analyzer-empty__action"
+                  >
+                    <Code2 size={15} />
+                    Load {languageLabel} sample
+                  </Button>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </aside>
+      </section>
     </div>
   );
 }

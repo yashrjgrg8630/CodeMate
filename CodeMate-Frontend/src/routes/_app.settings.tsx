@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { BackendBadge, PageHeader } from "@/components/app/shared";
+import { Moon } from "lucide-react";
+import { PageHeader } from "@/components/app/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,7 @@ import {
 import { LANGUAGES } from "@/types/domain";
 import { useQuery } from "@tanstack/react-query";
 import { getCurrentUser } from "@/services/authService";
+import { useTheme } from "@/hooks/use-theme";
 
 export const Route = createFileRoute("/_app/settings")({
   head: () => ({
@@ -25,7 +27,7 @@ export const Route = createFileRoute("/_app/settings")({
       {
         name: "description",
         content:
-          "Configure your CodeMate workspace defaults: preferred language, editor behaviour and notifications.",
+          "Configure your CodeMate workspace defaults: appearance, preferred language, editor behaviour and notifications.",
       },
       { property: "og:title", content: "Settings — CodeMate AI" },
       {
@@ -39,6 +41,7 @@ export const Route = createFileRoute("/_app/settings")({
 
 function SettingsPage() {
   const { data: user } = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser });
+  useTheme();
   const [language, setLanguage] = useState<string>(LANGUAGES[0]?.id ?? "python");
   const [autoOptimize, setAutoOptimize] = useState(true);
   const [verifyByDefault, setVerifyByDefault] = useState(true);
@@ -49,25 +52,28 @@ function SettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Settings"
-        description="Your account and activity are backed by the CodeMate API. The preferences on this page are currently session-only."
-        actions={<BackendBadge />}
+        description="Your account and activity are backed by the CodeMate API. Editor preferences apply to this session."
       />
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Profile</CardTitle>
+            <CardTitle className="font-display text-lg">Profile</CardTitle>
             <CardDescription>
               Account details returned by the authenticated backend.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Display name</Label>
+              <Label htmlFor="name" className="text-xs">
+                Display name
+              </Label>
               <Input id="name" value={user?.name ?? ""} readOnly />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email" className="text-xs">
+                Email
+              </Label>
               <Input id="email" type="email" value={user?.email ?? ""} readOnly />
             </div>
           </CardContent>
@@ -75,12 +81,30 @@ function SettingsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Code defaults</CardTitle>
+            <CardTitle className="font-display text-lg">Appearance</CardTitle>
+            <CardDescription>Workspace surface theme.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.06] p-4 text-foreground">
+              <Moon className="size-4 text-emerald-400" />
+              <div>
+                <p className="text-sm font-medium">Obsidian Dark</p>
+                <p className="text-xs text-muted-foreground">
+                  Low-glare dark workspace theme active.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display text-lg">Code defaults</CardTitle>
             <CardDescription>Applied when you open the analyzer or converter.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Preferred language</Label>
+              <Label className="text-xs">Preferred language</Label>
               <Select value={language} onValueChange={setLanguage}>
                 <SelectTrigger>
                   <SelectValue />
@@ -111,12 +135,16 @@ function SettingsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Practice goals</CardTitle>
-            <CardDescription>Drives the targets shown on your progress page.</CardDescription>
+            <CardTitle className="font-display text-lg">Practice goals &amp; Data</CardTitle>
+            <CardDescription>
+              Weekly targets and account-scoped persistence status.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="target">Weekly problem target</Label>
+              <Label htmlFor="target" className="text-xs">
+                Weekly problem target
+              </Label>
               <Input
                 id="target"
                 type="number"
@@ -132,19 +160,9 @@ function SettingsPage() {
               checked={notifications}
               onChange={setNotifications}
             />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Data</CardTitle>
-            <CardDescription>
-              Your analyses, roadmaps and progress are stored in your account.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Account data is associated with your signed-in profile and retained by the backend.
+            <p className="rounded-lg border border-border/70 bg-muted/25 p-3 text-xs leading-relaxed text-muted-foreground">
+              Analyses, roadmaps, history, and interview scores are associated with your signed-in
+              profile and retained by the backend.
             </p>
           </CardContent>
         </Card>
@@ -173,7 +191,7 @@ function ToggleRow({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-3">
+    <div className="flex items-start justify-between gap-4 rounded-xl border border-border/80 bg-muted/20 p-3.5">
       <div className="space-y-0.5">
         <p className="text-sm font-medium">{label}</p>
         <p className="text-xs text-muted-foreground">{hint}</p>

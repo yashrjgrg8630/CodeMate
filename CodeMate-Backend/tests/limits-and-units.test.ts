@@ -1,20 +1,42 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { loadEnv } from "../src/config/env.js";
-import { titleFromCode, normalizeShares, relativeTime } from "../src/lib/util.js";
+import {
+  titleFromCode,
+  normalizeShares,
+  relativeTime,
+} from "../src/lib/util.js";
 import { toGeminiSchema } from "../src/services/ai/ai-service.js";
-import { providerErrorStatus } from "../src/services/ai/transport.js";
+import {
+  aiJobWithResumeSchema,
+  aiRoadmapSchema,
+} from "../src/services/ai/schemas.js";
+import {
+  providerErrorStatus,
+  SdkGeminiTransport,
+} from "../src/services/ai/transport.js";
 import { canonicalTopic } from "../src/services/stats.js";
-import { createCtx, PASSWORD, PY_CODE, resetDb, Session, signup, testEnv, type ErrorBody } from "./helpers.js";
+import {
+  createCtx,
+  PASSWORD,
+  PY_CODE,
+  resetDb,
+  Session,
+  signup,
+  testEnv,
+  type ErrorBody,
+} from "./helpers.js";
 
 beforeEach(resetDb);
+afterEach(() => vi.unstubAllGlobals());
 
 describe("rate limiting and quotas", () => {
   it("limits AI calls per user per minute, with Retry-After, without affecting other users", async () => {
     const ctx = createCtx({ AI_RATE_LIMIT_PER_MIN: "2" });
     const a = await signup(ctx, "a@example.com");
     const b = await signup(ctx, "b@example.com");
-    const call = (s: Session) => s.post<ErrorBody>("/api/analysis", { code: PY_CODE, language: "python" });
+    const call = (s: Session) =>
+      s.post<ErrorBody>("/api/analysis", { code: PY_CODE, language: "python" });
     expect((await call(a)).status).toBe(200);
     expect((await call(a)).status).toBe(200);
     const blocked = await call(a);
@@ -30,7 +52,10 @@ describe("rate limiting and quotas", () => {
     const s = await signup(ctx);
     await s.post("/api/analysis", { code: PY_CODE, language: "python" });
     await s.post("/api/analysis", { code: PY_CODE, language: "python" });
-    const r = await s.post<ErrorBody>("/api/analysis", { code: PY_CODE, language: "python" });
+    const r = await s.post<ErrorBody>("/api/analysis", {
+      code: PY_CODE,
+      language: "python",
+    });
     expect(r.status).toBe(429);
     expect(r.body.error.code).toBe("AI_QUOTA_EXCEEDED");
     expect(ctx.transport.calls).toHaveLength(2);
@@ -42,9 +67,19 @@ describe("rate limiting and quotas", () => {
     const ctx = createCtx({ AUTH_RATE_LIMIT_PER_MIN: "3" });
     const s = new Session(ctx.app);
     for (let i = 0; i < 3; i += 1) {
-      expect((await s.post("/api/auth/login", { email: "x@example.com", password: PASSWORD })).status).toBe(401);
+      expect(
+        (
+          await s.post("/api/auth/login", {
+            email: "x@example.com",
+            password: PASSWORD,
+          })
+        ).status,
+      ).toBe(401);
     }
-    const r = await s.post<ErrorBody>("/api/auth/login", { email: "x@example.com", password: PASSWORD });
+    const r = await s.post<ErrorBody>("/api/auth/login", {
+      email: "x@example.com",
+      password: PASSWORD,
+    });
     expect(r.status).toBe(429);
   });
 
@@ -58,7 +93,12 @@ describe("rate limiting and quotas", () => {
   it("rejects oversized bodies with 413", async () => {
     const ctx = createCtx();
     const s = await signup(ctx);
-    const r = await s.request<ErrorBody>("POST", "/api/analysis", undefined, { rawBody: JSON.stringify({ code: "x".repeat(300_000), language: "python" }) });
+    const r = await s.request<ErrorBody>("POST", "/api/analysis", undefined, {
+      rawBody: JSON.stringify({
+        code: "x".repeat(300_000),
+        language: "python",
+      }),
+    });
     expect(r.status).toBe(413);
     expect(r.body.error.code).toBe("PAYLOAD_TOO_LARGE");
   });
@@ -69,9 +109,15 @@ describe("rate limiting and quotas", () => {
     ctx.transport.queue("meticulous senior code reviewer", () => {
       throw new Error("secret connection string postgres://admin:hunter2@db");
     });
-    const r = await s.post<ErrorBody>("/api/analysis", { code: PY_CODE, language: "python" });
+    const r = await s.post<ErrorBody>("/api/analysis", {
+      code: PY_CODE,
+      language: "python",
+    });
     expect(r.status).toBe(500);
-    expect(r.body.error).toEqual({ code: "INTERNAL", message: "Something went wrong on our side." });
+    expect(r.body.error).toEqual({
+      code: "INTERNAL",
+      message: "Something went wrong on our side.",
+    });
     expect(JSON.stringify(r.body)).not.toContain("hunter2");
   });
 });
@@ -105,30 +151,123 @@ describe("units", () => {
 
   it("relativeTime formats recent and old dates", () => {
     const now = new Date("2026-01-10T12:00:00Z");
-    expect(relativeTime(new Date("2026-01-10T11:59:50Z"), now)).toBe("just now");
-    expect(relativeTime(new Date("2026-01-10T11:30:00Z"), now)).toBe("30 min ago");
+    expect(relativeTime(new Date("2026-01-10T11:59:50Z"), now)).toBe(
+      "just now",
+    );
+    expect(relativeTime(new Date("2026-01-10T11:30:00Z"), now)).toBe(
+      "30 min ago",
+    );
     expect(relativeTime(new Date("2026-01-10T09:00:00Z"), now)).toBe("3h ago");
     expect(relativeTime(new Date("2026-01-08T12:00:00Z"), now)).toBe("2d ago");
-    expect(relativeTime(new Date("2025-11-01T12:00:00Z"), now)).toBe("2025-11-01");
+    expect(relativeTime(new Date("2025-11-01T12:00:00Z"), now)).toBe(
+      "2025-11-01",
+    );
   });
 
   it("toGeminiSchema emits plain JSON Schema without $schema", () => {
-    const schema = toGeminiSchema(z.object({ a: z.number().int().min(0).max(100), b: z.enum(["x", "y"]) })) as Record<string, unknown>;
+    const schema = toGeminiSchema(
+      z.object({ a: z.number().int().min(0).max(100), b: z.enum(["x", "y"]) }),
+    ) as Record<string, unknown>;
     expect(schema["$schema"]).toBeUndefined();
     expect(schema["type"]).toBe("object");
     expect(JSON.stringify(schema)).toContain('"maximum":100');
   });
 
+  it("keeps roadmap URL fields compatible with Gemini structured output", () => {
+    const serialized = [
+      toGeminiSchema(aiJobWithResumeSchema),
+      toGeminiSchema(aiRoadmapSchema),
+    ];
+
+    expect(JSON.stringify(serialized)).not.toContain('"format":"uri"');
+    expect(JSON.stringify(serialized)).not.toContain('"maxLength":2048');
+  });
+
+  it("retries Gemini schema rejections in validated JSON mode", async () => {
+    const requestBodies: string[] = [];
+    let requestCount = 0;
+    const fetchMock: typeof fetch = async (_input, init) => {
+      requestCount += 1;
+      requestBodies.push(String(init?.body));
+      if (requestCount === 1) {
+        return new Response(
+          JSON.stringify({
+            error: { code: 400, message: "unsupported schema" },
+          }),
+          {
+            status: 400,
+            statusText: "Bad Request",
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: { parts: [{ text: '{"answer":"ready"}' }] },
+              finishReason: "STOP",
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await new SdkGeminiTransport("test-key").generate({
+      model: "gemini-flash-lite-latest",
+      system: "Return an answer.",
+      prompt: "Say ready.",
+      jsonSchema: {
+        type: "object",
+        properties: { answer: { type: "string" } },
+        required: ["answer"],
+      },
+      maxOutputTokens: 64,
+      temperature: 0,
+      timeoutMs: 1_000,
+    });
+
+    expect(requestCount).toBe(2);
+    expect(response.text).toBe('{"answer":"ready"}');
+    expect(requestBodies[1]).toContain("Return JSON matching this schema");
+    expect(requestBodies[1]).not.toContain("responseJsonSchema");
+    expect(requestBodies[1]).toContain("application/json");
+  });
+
   it("recognizes HTTP statuses wrapped by the Gemini SDK", () => {
-    expect(providerErrorStatus(new Error("Retryable HTTP Error: Service Unavailable"))).toBe(503);
-    expect(providerErrorStatus(new Error("Retryable HTTP Error: Too Many Requests"))).toBe(429);
-    expect(providerErrorStatus(new Error("Non-retryable exception Not Found sending request"))).toBe(404);
+    expect(
+      providerErrorStatus(
+        new Error("Retryable HTTP Error: Service Unavailable"),
+      ),
+    ).toBe(503);
+    expect(
+      providerErrorStatus(new Error("Retryable HTTP Error: Too Many Requests")),
+    ).toBe(429);
+    expect(
+      providerErrorStatus(
+        new Error("Non-retryable exception Bad Request sending request"),
+      ),
+    ).toBe(400);
+    expect(
+      providerErrorStatus(
+        new Error("Non-retryable exception Not Found sending request"),
+      ),
+    ).toBe(404);
   });
 
   it("loadEnv reports every problem and treats blanks as unset", () => {
-    expect(() => loadEnv({ NODE_ENV: "test" })).toThrow(/DATABASE_URL[\s\S]*FRONTEND_ORIGIN[\s\S]*JWT_ACCESS_SECRET[\s\S]*GEMINI_API_KEY/);
-    expect(() => testEnv({ JWT_ACCESS_SECRET: "short" })).toThrow(/at least 32/);
-    const env = testEnv({ GOOGLE_CLIENT_ID: "   ", FRONTEND_ORIGIN: "http://localhost:3000///" });
+    expect(() => loadEnv({ NODE_ENV: "test" })).toThrow(
+      /DATABASE_URL[\s\S]*FRONTEND_ORIGIN[\s\S]*JWT_ACCESS_SECRET[\s\S]*GEMINI_API_KEY/,
+    );
+    expect(() => testEnv({ JWT_ACCESS_SECRET: "short" })).toThrow(
+      /at least 32/,
+    );
+    const env = testEnv({
+      GOOGLE_CLIENT_ID: "   ",
+      FRONTEND_ORIGIN: "http://localhost:3000///",
+    });
     expect(env.GOOGLE_CLIENT_ID).toBeUndefined();
     expect(env.FRONTEND_ORIGIN).toBe("http://localhost:3000");
   });

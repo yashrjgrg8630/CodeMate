@@ -19,12 +19,14 @@ export const noStore: MiddlewareHandler = async (c, next) => {
  * CSRF defence in depth (on top of SameSite cookies): browsers always send Origin on cross-origin
  * state-changing requests, so reject any whose Origin is not the configured frontend.
  */
-export function originGuard(allowedOrigin: string): MiddlewareHandler {
+export function originGuard(allowedOrigin: string | ((origin: string) => boolean)): MiddlewareHandler {
   return async (c, next) => {
     const method = c.req.method;
     if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
       const origin = c.req.header("origin");
-      if (origin && origin !== allowedOrigin) {
+      const allowed =
+        !origin || (typeof allowedOrigin === "function" ? allowedOrigin(origin) : origin === allowedOrigin);
+      if (!allowed) {
         throw new AppError(403, "BAD_ORIGIN", "Cross-origin request blocked.");
       }
     }

@@ -11,8 +11,11 @@ const db = createPrisma(env.DATABASE_URL);
 const ai = new AIService(env, createTransport(env), db);
 const app = createApp({ env, db, ai });
 
+const activeModel =
+  env.AI_PROVIDER === "openai-compatible" ? env.OPENAI_MODEL : env.GEMINI_MODEL;
+
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
-  logger.info("server.listening", { port: info.port, model: env.GEMINI_MODEL });
+  logger.info("server.listening", { port: info.port, provider: env.AI_PROVIDER, model: activeModel });
 });
 
 async function shutdown(signal: string): Promise<void> {

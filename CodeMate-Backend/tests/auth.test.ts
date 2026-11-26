@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { userSchema } from "../src/schemas/domain.js";
-import { createCtx, ORIGIN, PASSWORD, resetDb, Session, signup, type Ctx, type ErrorBody } from "./helpers.js";
+import {
+  createCtx,
+  ORIGIN,
+  PASSWORD,
+  resetDb,
+  Session,
+  signup,
+  type Ctx,
+  type ErrorBody,
+} from "./helpers.js";
 
 let ctx: Ctx;
 beforeEach(async () => {
@@ -11,7 +20,11 @@ beforeEach(async () => {
 describe("POST /api/auth/signup", () => {
   it("creates an account, sets httpOnly cookies and never returns the hash", async () => {
     const s = new Session(ctx.app);
-    const r = await s.post<{ user: unknown }>("/api/auth/signup", { email: "Ada@Example.com ", password: PASSWORD, name: "Ada" });
+    const r = await s.post<{ user: unknown }>("/api/auth/signup", {
+      email: "Ada@Example.com ",
+      password: PASSWORD,
+      name: "Ada",
+    });
     expect(r.status).toBe(201);
     const user = userSchema.parse(r.body.user);
     expect(user.email).toBe("ada@example.com");
@@ -23,26 +36,41 @@ describe("POST /api/auth/signup", () => {
     expect(cookies).toMatch(/cm_refresh=[^\n]*Path=\/api\/auth/i);
     expect(cookies).toMatch(/SameSite=Lax/i);
 
-    const row = await ctx.db.user.findUniqueOrThrow({ where: { email: "ada@example.com" } });
+    const row = await ctx.db.user.findUniqueOrThrow({
+      where: { email: "ada@example.com" },
+    });
     expect(row.passwordHash).toMatch(/^\$2[aby]\$/);
   });
 
   it("rejects a duplicate email with 409", async () => {
     await signup(ctx);
-    const r = await new Session(ctx.app).post<ErrorBody>("/api/auth/signup", { email: "ada@example.com", password: PASSWORD, name: "Again" });
+    const r = await new Session(ctx.app).post<ErrorBody>("/api/auth/signup", {
+      email: "ada@example.com",
+      password: PASSWORD,
+      name: "Again",
+    });
     expect(r.status).toBe(409);
     expect(r.body.error.code).toBe("EMAIL_TAKEN");
   });
 
   it("rejects invalid input with a structured 400", async () => {
-    const r = await new Session(ctx.app).post<ErrorBody>("/api/auth/signup", { email: "not-an-email", password: "short", name: "" });
+    const r = await new Session(ctx.app).post<ErrorBody>("/api/auth/signup", {
+      email: "not-an-email",
+      password: "short",
+      name: "",
+    });
     expect(r.status).toBe(400);
     expect(r.body.error.code).toBe("VALIDATION_ERROR");
     expect(Array.isArray(r.body.error.details)).toBe(true);
   });
 
   it("rejects malformed JSON", async () => {
-    const r = await new Session(ctx.app).request<ErrorBody>("POST", "/api/auth/signup", undefined, { rawBody: "{nope" });
+    const r = await new Session(ctx.app).request<ErrorBody>(
+      "POST",
+      "/api/auth/signup",
+      undefined,
+      { rawBody: "{nope" },
+    );
     expect(r.status).toBe(400);
     expect(r.body.error.code).toBe("INVALID_JSON");
   });
@@ -52,22 +80,33 @@ describe("POST /api/auth/login", () => {
   it("logs in with correct credentials", async () => {
     await signup(ctx);
     const s = new Session(ctx.app);
-    const r = await s.post("/api/auth/login", { email: "ADA@example.com", password: PASSWORD });
+    const r = await s.post("/api/auth/login", {
+      email: "ADA@example.com",
+      password: PASSWORD,
+    });
     expect(r.status).toBe(200);
     expect((await s.get("/api/auth/me")).status).toBe(200);
   });
 
   it("returns the same 401 for a wrong password and an unknown email", async () => {
     await signup(ctx);
-    const wrong = await new Session(ctx.app).post<ErrorBody>("/api/auth/login", { email: "ada@example.com", password: "wrong-password" });
-    const unknown = await new Session(ctx.app).post<ErrorBody>("/api/auth/login", { email: "nobody@example.com", password: "wrong-password" });
+    const wrong = await new Session(ctx.app).post<ErrorBody>(
+      "/api/auth/login",
+      { email: "ada@example.com", password: "wrong-password" },
+    );
+    const unknown = await new Session(ctx.app).post<ErrorBody>(
+      "/api/auth/login",
+      { email: "nobody@example.com", password: "wrong-password" },
+    );
     expect(wrong.status).toBe(401);
     expect(unknown.status).toBe(401);
     expect(wrong.body.error.message).toBe(unknown.body.error.message);
   });
 
   it("validates the body", async () => {
-    const r = await new Session(ctx.app).post<ErrorBody>("/api/auth/login", { email: "x" });
+    const r = await new Session(ctx.app).post<ErrorBody>("/api/auth/login", {
+      email: "x",
+    });
     expect(r.status).toBe(400);
   });
 });
@@ -90,7 +129,10 @@ describe("GET /api/auth/me", () => {
     const s = await signup(ctx);
     const cookie = s.jar.get("cm_access");
     if (!cookie) throw new Error("no cookie");
-    s.jar.set("cm_access", { ...cookie, value: `${cookie.value.slice(0, -4)}AAAA` });
+    s.jar.set("cm_access", {
+      ...cookie,
+      value: `${cookie.value.slice(0, -4)}AAAA`,
+    });
     expect((await s.get("/api/auth/me")).status).toBe(401);
   });
 });
@@ -125,12 +167,16 @@ describe("refresh token rotation", () => {
   });
 
   it("401s without a refresh cookie", async () => {
-    expect((await new Session(ctx.app).post("/api/auth/refresh")).status).toBe(401);
+    expect((await new Session(ctx.app).post("/api/auth/refresh")).status).toBe(
+      401,
+    );
   });
 
   it("rejects an expired refresh token", async () => {
     const s = await signup(ctx);
-    await ctx.db.refreshToken.updateMany({ data: { expiresAt: new Date(Date.now() - 1000) } });
+    await ctx.db.refreshToken.updateMany({
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
     expect((await s.post("/api/auth/refresh")).status).toBe(401);
   });
 });
@@ -153,7 +199,12 @@ describe("POST /api/auth/logout", () => {
 describe("CSRF origin guard", () => {
   it("blocks state-changing requests from another origin", async () => {
     const s = await signup(ctx);
-    const r = await s.request<ErrorBody>("POST", "/api/analysis", { code: "x", language: "python" }, { origin: "https://evil.example" });
+    const r = await s.request<ErrorBody>(
+      "POST",
+      "/api/analysis",
+      { code: "x", language: "python" },
+      { origin: "https://evil.example" },
+    );
     expect(r.status).toBe(403);
     expect(r.body.error.code).toBe("BAD_ORIGIN");
   });
@@ -175,6 +226,23 @@ describe("Google OAuth", () => {
     expect(r.body.error.code).toBe("OAUTH_DISABLED");
   });
 
+  it("reports whether the Google provider is configured without exposing credentials", async () => {
+    const disabled = await new Session(ctx.app).get<{ enabled: boolean }>(
+      "/api/auth/google/status",
+    );
+    expect(disabled.body.enabled).toBe(false);
+
+    const enabledCtx = createCtx({
+      GOOGLE_CLIENT_ID: "client-id",
+      GOOGLE_CLIENT_SECRET: "client-secret",
+      GOOGLE_REDIRECT_URI: "http://localhost:8787/api/auth/google/callback",
+    });
+    const enabled = await new Session(enabledCtx.app).get<{ enabled: boolean }>(
+      "/api/auth/google/status",
+    );
+    expect(enabled.body).toEqual({ enabled: true });
+  });
+
   const googleEnv = {
     GOOGLE_CLIENT_ID: "client-id",
     GOOGLE_CLIENT_SECRET: "client-secret",
@@ -184,15 +252,21 @@ describe("Google OAuth", () => {
   function fakeGoogle(profile: Record<string, unknown>): typeof fetch {
     return (async (input: string | URL | Request) => {
       const url = String(input);
-      if (url.includes("oauth2.googleapis.com/token")) return Response.json({ access_token: "g-token" });
-      if (url.includes("openidconnect.googleapis.com")) return Response.json(profile);
+      if (url.includes("oauth2.googleapis.com/token"))
+        return Response.json({ access_token: "g-token" });
+      if (url.includes("openidconnect.googleapis.com"))
+        return Response.json(profile);
       return new Response("nope", { status: 404 });
     }) as typeof fetch;
   }
 
-  async function start(c: Ctx): Promise<{ s: Session; state: string }> {
+  async function start(
+    c: Ctx,
+    returnTo?: string,
+  ): Promise<{ s: Session; state: string }> {
     const s = new Session(c.app);
-    const r = await s.get("/api/auth/google");
+    const query = returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : "";
+    const r = await s.get(`/api/auth/google${query}`);
     expect(r.status).toBe(302);
     const location = new URL(r.res.headers.get("location") ?? "");
     expect(location.host).toBe("accounts.google.com");
@@ -202,18 +276,70 @@ describe("Google OAuth", () => {
   }
 
   it("completes the code flow and creates a user", async () => {
-    const c = createCtx(googleEnv, fakeGoogle({ sub: "g-123", email: "New@Gmail.com", email_verified: true, name: "New User", picture: "https://img/x.png" }));
+    const c = createCtx(
+      googleEnv,
+      fakeGoogle({
+        sub: "g-123",
+        email: "New@Gmail.com",
+        email_verified: true,
+        name: "New User",
+        picture: "https://img/x.png",
+      }),
+    );
     const { s, state } = await start(c);
     const cb = await s.get(`/api/auth/google/callback?code=abc&state=${state}`);
     expect(cb.status).toBe(302);
     expect(cb.res.headers.get("location")).toBe(`${ORIGIN}/dashboard`);
-    const me = await s.get<{ user: { email: string; avatarUrl: string } }>("/api/auth/me");
+    const me = await s.get<{ user: { email: string; avatarUrl: string } }>(
+      "/api/auth/me",
+    );
     expect(me.body.user.email).toBe("new@gmail.com");
     expect(me.body.user.avatarUrl).toBe("https://img/x.png");
   });
 
+  it("returns to the requested same-origin route after Google sign-in", async () => {
+    const c = createCtx(
+      googleEnv,
+      fakeGoogle({
+        sub: "g-return",
+        email: "return@example.com",
+        email_verified: true,
+        name: "Return User",
+      }),
+    );
+    const { s, state } = await start(c, "/interview?source=auth");
+    const cb = await s.get(`/api/auth/google/callback?code=abc&state=${state}`);
+    expect(cb.res.headers.get("location")).toBe(
+      `${ORIGIN}/interview?source=auth`,
+    );
+    expect((await s.get("/api/auth/me")).status).toBe(200);
+  });
+
+  it("ignores an external OAuth return URL", async () => {
+    const c = createCtx(
+      googleEnv,
+      fakeGoogle({
+        sub: "g-safe",
+        email: "safe@example.com",
+        email_verified: true,
+        name: "Safe User",
+      }),
+    );
+    const { s, state } = await start(c, "https://attacker.example/");
+    const cb = await s.get(`/api/auth/google/callback?code=abc&state=${state}`);
+    expect(cb.res.headers.get("location")).toBe(`${ORIGIN}/dashboard`);
+  });
+
   it("rejects a mismatched state", async () => {
-    const c = createCtx(googleEnv, fakeGoogle({ sub: "g-1", email: "a@b.com", email_verified: true, name: "A" }));
+    const c = createCtx(
+      googleEnv,
+      fakeGoogle({
+        sub: "g-1",
+        email: "a@b.com",
+        email_verified: true,
+        name: "A",
+      }),
+    );
     const { s } = await start(c);
     const cb = await s.get("/api/auth/google/callback?code=abc&state=forged");
     expect(cb.status).toBe(302);
@@ -222,19 +348,46 @@ describe("Google OAuth", () => {
   });
 
   it("rejects an unverified Google email", async () => {
-    const c = createCtx(googleEnv, fakeGoogle({ sub: "g-2", email: "a@b.com", email_verified: false, name: "A" }));
+    const c = createCtx(
+      googleEnv,
+      fakeGoogle({
+        sub: "g-2",
+        email: "a@b.com",
+        email_verified: false,
+        name: "A",
+      }),
+    );
     const { s, state } = await start(c);
     const cb = await s.get(`/api/auth/google/callback?code=abc&state=${state}`);
     expect(cb.res.headers.get("location")).toContain("error=oauth");
   });
 
   it("linking an existing password account drops its password and revokes old sessions", async () => {
-    const c = createCtx(googleEnv, fakeGoogle({ sub: "g-9", email: "ada@example.com", email_verified: true, name: "Ada" }));
+    const c = createCtx(
+      googleEnv,
+      fakeGoogle({
+        sub: "g-9",
+        email: "ada@example.com",
+        email_verified: true,
+        name: "Ada",
+      }),
+    );
     const old = await signup(c);
     const { s, state } = await start(c);
-    expect((await s.get(`/api/auth/google/callback?code=abc&state=${state}`)).res.headers.get("location")).toBe(`${ORIGIN}/dashboard`);
+    expect(
+      (
+        await s.get(`/api/auth/google/callback?code=abc&state=${state}`)
+      ).res.headers.get("location"),
+    ).toBe(`${ORIGIN}/dashboard`);
 
-    expect((await new Session(c.app).post("/api/auth/login", { email: "ada@example.com", password: PASSWORD })).status).toBe(401);
+    expect(
+      (
+        await new Session(c.app).post("/api/auth/login", {
+          email: "ada@example.com",
+          password: PASSWORD,
+        })
+      ).status,
+    ).toBe(401);
     expect((await old.post("/api/auth/refresh")).status).toBe(401);
     expect(await c.db.user.count()).toBe(1);
   });

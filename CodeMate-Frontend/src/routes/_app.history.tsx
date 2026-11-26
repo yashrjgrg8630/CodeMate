@@ -79,14 +79,12 @@ function HistoryPage() {
       item.title.toLowerCase().includes(query.toLowerCase()),
   );
 
-  const handleDelete = (id: string) => deleteMutation.mutate(id);
-  const handleClear = () => clearMutation.mutate();
-
   return (
     <div className="space-y-6">
       <PageHeader
-        title="History"
-        description="Every solution you have run through CodeMate, with how it evolved."
+        eyebrow="Code Intelligence"
+        title="History & Timeline"
+        description="Every solution you have run through CodeMate AI, with its complexity evolution."
         actions={<BackendBadge />}
       />
 
@@ -96,7 +94,7 @@ function HistoryPage() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by title"
+            placeholder="Search by title…"
             className="pl-9"
           />
         </div>
@@ -118,10 +116,10 @@ function HistoryPage() {
             type="button"
             variant="ghost"
             className="text-muted-foreground hover:text-destructive"
-            onClick={handleClear}
+            onClick={() => clearMutation.mutate()}
             disabled={clearMutation.isPending}
           >
-            <Trash2 className="size-4" />
+            <Trash2 className="size-3.5" />
             Clear history
           </Button>
         ) : null}
@@ -146,15 +144,15 @@ function HistoryPage() {
           <CardContent className="p-2">
             <Accordion type="single" collapsible>
               {items.map((item) => (
-                <AccordionItem key={item.id} value={item.id}>
+                <AccordionItem key={item.id} value={item.id} className="border-border/60">
                   <div className="flex items-center gap-2">
-                    <AccordionTrigger className="flex-1 px-3">
+                    <AccordionTrigger className="flex-1 px-3 hover:no-underline">
                       <div className="flex w-full flex-wrap items-center gap-2 pr-3 text-left">
-                        <span className="font-medium">{item.title}</span>
-                        <Badge variant="secondary" className="text-[10px] uppercase">
+                        <span className="text-sm font-semibold">{item.title}</span>
+                        <Badge variant="secondary" className="font-code text-[10px] uppercase">
                           {item.language}
                         </Badge>
-                        <Badge variant="outline" className="text-[10px] uppercase">
+                        <Badge variant="outline" className="font-code text-[10px] uppercase">
                           {item.status}
                         </Badge>
                         <span className="metric ml-auto text-xs text-muted-foreground">
@@ -168,21 +166,21 @@ function HistoryPage() {
                       size="icon"
                       aria-label={`Delete ${item.title}`}
                       title="Delete history item"
-                      className="shrink-0 text-muted-foreground hover:text-destructive"
-                      onClick={() => handleDelete(item.id)}
+                      className="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => deleteMutation.mutate(item.id)}
                       disabled={deleteMutation.isPending && deleteMutation.variables === item.id}
                     >
-                      <Trash2 className="size-4" />
+                      <Trash2 className="size-3.5" />
                     </Button>
                   </div>
-                  <AccordionContent className="px-4">
-                    <p className="mb-3 text-sm text-muted-foreground">
+                  <AccordionContent className="px-4 pb-4">
+                    <p className="mb-3 font-code text-xs text-primary font-medium">
                       Optimization gain: {item.optimizationPercent}%
                     </p>
-                    <ol className="space-y-2 border-l border-border pl-4">
+                    <ol className="space-y-2.5 border-l border-border pl-4">
                       {item.evolution.map((step, i) => (
                         <li key={i} className="text-sm">
-                          <span className="font-medium">{step.step}</span>
+                          <span className="font-medium text-foreground">{step.step}</span>
                           <span className="block text-xs text-muted-foreground">{step.detail}</span>
                         </li>
                       ))}
