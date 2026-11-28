@@ -11,6 +11,7 @@ export const OAUTH_COOKIE = "cm_oauth";
 /** Authenticates from the httpOnly access cookie and exposes `userId`. The client never supplies a user id. */
 export function requireAuth(auth: AuthService): MiddlewareHandler<AppBindings> {
   return async (c, next) => {
+    if (c.req.method === "OPTIONS") return next();
     const token = getCookie(c, ACCESS_COOKIE);
     if (!token) throw unauthorized();
     c.set("userId", await auth.verifyAccess(token));

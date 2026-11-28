@@ -6,6 +6,12 @@ import { createPrisma } from "./lib/prisma.js";
 import { AIService } from "./services/ai/ai-service.js";
 import { createTransport } from "./services/ai/transport.js";
 
+try {
+  process.loadEnvFile?.();
+} catch {
+  // Production environments (e.g., Antideploy) inject env vars directly without a .env file.
+}
+
 const env = loadEnv();
 const db = createPrisma(env.DATABASE_URL);
 const ai = new AIService(env, createTransport(env), db);
@@ -14,7 +20,7 @@ const app = createApp({ env, db, ai });
 const activeModel =
   env.AI_PROVIDER === "openai-compatible" ? env.OPENAI_MODEL : env.GEMINI_MODEL;
 
-const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
+const server = serve({ fetch: app.fetch, port: env.PORT, hostname: "0.0.0.0" }, (info) => {
   logger.info("server.listening", { port: info.port, provider: env.AI_PROVIDER, model: activeModel });
 });
 

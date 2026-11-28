@@ -49,6 +49,7 @@ export function createApp(deps: AppDeps): Hono<AppBindings> {
       maxAge: 600,
     }),
   );
+  app.options("/api/*", (c) => c.body(null, 204));
   app.use("/api/*", noStore);
   app.use("/api/*", originGuard(isAllowedOrigin));
   app.use(
