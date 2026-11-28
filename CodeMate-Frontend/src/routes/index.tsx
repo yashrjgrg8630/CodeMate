@@ -483,10 +483,22 @@ function HeroObjectScene() {
           <div className="hero-processor__body">
             <div className="hero-processor__core">
               <div className="hero-processor__dots">
-                <i /><i /><i /><i />
-                <i /><i /><i /><i />
-                <i /><i /><i /><i />
-                <i /><i /><i /><i />
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
               </div>
             </div>
           </div>

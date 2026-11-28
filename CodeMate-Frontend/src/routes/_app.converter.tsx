@@ -5,6 +5,7 @@ import { convertCode } from "@/services/conversionService";
 import { SAMPLE_CODE } from "@/services/analysisService";
 import { LANGUAGES, type Language } from "@/types/domain";
 import { useBackgroundTask } from "@/hooks/use-background-task";
+import { loadPreferences } from "@/hooks/use-preferences";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,10 +47,13 @@ export const Route = createFileRoute("/_app/converter")({
 });
 
 function ConverterPage() {
-  const [sourceLanguage, setSourceLanguage] = useState<Language>("python");
-  const [targetLanguage, setTargetLanguage] = useState<Language>("java");
-  const [optimizeWhileConverting, setOptimize] = useState(true);
-  const [code, setCode] = useState(SAMPLE_CODE.python);
+  const initialPrefs = loadPreferences();
+  const [sourceLanguage, setSourceLanguage] = useState<Language>(initialPrefs.preferredLanguage);
+  const [targetLanguage, setTargetLanguage] = useState<Language>(
+    initialPrefs.preferredLanguage === "java" ? "python" : "java",
+  );
+  const [optimizeWhileConverting, setOptimize] = useState(initialPrefs.autoOptimize);
+  const [code, setCode] = useState(SAMPLE_CODE[initialPrefs.preferredLanguage]);
   const convert = useBackgroundTask<Awaited<ReturnType<typeof convertCode>>>("converter");
   const targetLanguages = LANGUAGES.filter((language) => language.id !== sourceLanguage);
 

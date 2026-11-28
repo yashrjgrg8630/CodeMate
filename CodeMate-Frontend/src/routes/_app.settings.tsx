@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Moon } from "lucide-react";
@@ -15,10 +15,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { LANGUAGES } from "@/types/domain";
+import { LANGUAGES, type Language } from "@/types/domain";
 import { useQuery } from "@tanstack/react-query";
 import { getCurrentUser } from "@/services/authService";
 import { useTheme } from "@/hooks/use-theme";
+import { loadPreferences, usePreferences } from "@/hooks/use-preferences";
 
 export const Route = createFileRoute("/_app/settings")({
   head: () => ({
@@ -42,17 +43,42 @@ export const Route = createFileRoute("/_app/settings")({
 function SettingsPage() {
   const { data: user } = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser });
   useTheme();
-  const [language, setLanguage] = useState<string>(LANGUAGES[0]?.id ?? "python");
-  const [autoOptimize, setAutoOptimize] = useState(true);
-  const [verifyByDefault, setVerifyByDefault] = useState(true);
-  const [notifications, setNotifications] = useState(false);
-  const [target, setTarget] = useState("5");
+  const { preferences, updatePreferences } = usePreferences();
+  const [language, setLanguage] = useState<Language>(preferences.preferredLanguage);
+  const [autoOptimize, setAutoOptimize] = useState(preferences.autoOptimize);
+  const [verifyByDefault, setVerifyByDefault] = useState(preferences.verifyByDefault);
+  const [notifications, setNotifications] = useState(preferences.notifications);
+  const [target, setTarget] = useState(String(preferences.weeklyTarget));
+
+  useEffect(() => {
+    const saved = loadPreferences();
+    setLanguage(saved.preferredLanguage);
+    setAutoOptimize(saved.autoOptimize);
+    setVerifyByDefault(saved.verifyByDefault);
+    setNotifications(saved.notifications);
+    setTarget(String(saved.weeklyTarget));
+  }, []);
+
+  function handleSave() {
+    const parsedTarget = Number(target);
+    const weeklyTarget =
+      Number.isInteger(parsedTarget) && parsedTarget >= 1 && parsedTarget <= 50 ? parsedTarget : 5;
+    setTarget(String(weeklyTarget));
+    updatePreferences({
+      preferredLanguage: language,
+      autoOptimize,
+      verifyByDefault,
+      notifications,
+      weeklyTarget,
+    });
+    toast.success("Preferences saved and persisted.");
+  }
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Settings"
-        description="Your account and activity are backed by the CodeMate API. Editor preferences apply to this session."
+        description="Your account and activity are backed by the CodeMate API. Workspace preferences persist across sessions."
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -105,7 +131,7 @@ function SettingsPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label className="text-xs">Preferred language</Label>
-              <Select value={language} onValueChange={setLanguage}>
+              <Select value={language} onValueChange={(v) => setLanguage(v as Language)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -136,9 +162,7 @@ function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="font-display text-lg">Practice goals &amp; Data</CardTitle>
-            <CardDescription>
-              Weekly targets and account-scoped persistence status.
-            </CardDescription>
+            <CardDescription>Weekly targets and account-scoped persistence status.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -169,11 +193,7 @@ function SettingsPage() {
       </div>
 
       <div className="flex justify-end">
-        <Button
-          onClick={() => toast.success("These preferences are active for this page session.")}
-        >
-          Save preferences
-        </Button>
+        <Button onClick={handleSave}>Save preferences</Button>
       </div>
     </div>
   );

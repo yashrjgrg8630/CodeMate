@@ -10,8 +10,7 @@ export function getApiBaseUrl(): string {
     // In browser on localhost / 127.0.0.1, always use same-origin window.location.origin
     // so Vite dev proxy handles /api seamlessly without cross-origin, CORS or Brave shield blocks.
     const isLocalhost =
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1";
+      window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
     if (isLocalhost) {
       return window.location.origin;
     }
@@ -99,11 +98,7 @@ async function send<T>(path: string, init: RequestInit, retried: boolean): Promi
     const body = payload as { error?: { message?: string; code?: string } } | undefined;
 
     // Only dispatch unauthorized if the session could not be refreshed
-    if (
-      response.status === 401 &&
-      typeof window !== "undefined" &&
-      !AUTH_NO_REFRESH.has(path)
-    ) {
+    if (response.status === 401 && typeof window !== "undefined" && !AUTH_NO_REFRESH.has(path)) {
       window.dispatchEvent(new Event("codemate:unauthorized"));
     }
 

@@ -37,7 +37,14 @@ export function CodeMateMark({
       className="shrink-0"
     >
       <defs>
-        <linearGradient id={gradId} x1="12" y1="6.5" x2="12" y2="17.5" gradientUnits="userSpaceOnUse">
+        <linearGradient
+          id={gradId}
+          x1="12"
+          y1="6.5"
+          x2="12"
+          y2="17.5"
+          gradientUnits="userSpaceOnUse"
+        >
           {isDark ? (
             <>
               <stop offset="0%" stopColor="#6ee7b7" />
@@ -71,20 +78,12 @@ export function CodeMateMark({
       />
 
       {/* Faceted algorithmic / neural prism core */}
-      <path
-        d="M12 6.8L15.3 12L12 17.2L8.7 12L12 6.8Z"
-        fill={`url(#${gradId})`}
-      />
+      <path d="M12 6.8L15.3 12L12 17.2L8.7 12L12 6.8Z" fill={`url(#${gradId})`} />
       <path
         d="M12 6.8L15.3 12H12V6.8Z"
         fill={isDark ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.28)"}
       />
-      <circle
-        cx="12"
-        cy="12"
-        r="1.1"
-        fill={isDark ? "#ecfdf5" : "#f0fdf4"}
-      />
+      <circle cx="12" cy="12" r="1.1" fill={isDark ? "#ecfdf5" : "#f0fdf4"} />
     </svg>
   );
 
@@ -161,10 +160,7 @@ export function CodeMateLogo({
           >
             CodeMate
             <span
-              className={cn(
-                "ml-1 font-medium",
-                isDark ? "text-emerald-400/90" : "text-[#1a6b3c]",
-              )}
+              className={cn("ml-1 font-medium", isDark ? "text-emerald-400/90" : "text-[#1a6b3c]")}
             >
               AI
             </span>

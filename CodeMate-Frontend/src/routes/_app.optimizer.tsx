@@ -24,6 +24,7 @@ import { optimizeCode, verifyOptimization } from "@/services/optimizationService
 import { SAMPLE_CODE } from "@/services/analysisService";
 import { LANGUAGES, type Language, type OptimizationCandidate } from "@/types/domain";
 import { useBackgroundTask } from "@/hooks/use-background-task";
+import { loadPreferences } from "@/hooks/use-preferences";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -204,8 +205,8 @@ function CodeEditor({
 }
 
 function OptimizerPage() {
-  const [language, setLanguage] = useState<Language>("python");
-  const [code, setCode] = useState(SAMPLE_CODE.python);
+  const [language, setLanguage] = useState<Language>(() => loadPreferences().preferredLanguage);
+  const [code, setCode] = useState(() => SAMPLE_CODE[loadPreferences().preferredLanguage]);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [verifyCandidateId, setVerifyCandidateId] = useState<string | null>(null);
   const [appliedOriginal, setAppliedOriginal] = useState<{

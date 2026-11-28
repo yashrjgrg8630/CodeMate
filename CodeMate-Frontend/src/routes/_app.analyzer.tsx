@@ -15,6 +15,7 @@ import {
 import { analyzeCode, SAMPLE_CODE } from "@/services/analysisService";
 import { LANGUAGES, type Language } from "@/types/domain";
 import { useBackgroundTask } from "@/hooks/use-background-task";
+import { loadPreferences } from "@/hooks/use-preferences";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -62,7 +63,7 @@ const FILE_EXT: Record<Language, string> = {
 };
 
 function AnalyzerPage() {
-  const [language, setLanguage] = useState<Language>("python");
+  const [language, setLanguage] = useState<Language>(() => loadPreferences().preferredLanguage);
   const [code, setCode] = useState("");
   const lineNumbersRef = useRef<HTMLDivElement>(null);
   const analysis = useBackgroundTask<Awaited<ReturnType<typeof analyzeCode>>>("analyzer");
