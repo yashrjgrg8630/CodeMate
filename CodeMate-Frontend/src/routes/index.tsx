@@ -2,14 +2,13 @@ import {
   useEffect,
   useRef,
   useState,
+  useCallback,
   type CSSProperties,
-  type PointerEvent,
   type ReactNode,
 } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   Activity,
-  ArrowDown,
   ArrowRight,
   ArrowUpRight,
   Braces,
@@ -23,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { useScrollReveal } from "@/hooks/use-scroll-reveal";
+import { CodeMateMark } from "@/components/brand/CodeMateLogo";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -43,13 +43,26 @@ export const Route = createFileRoute("/")({
   component: LandingPage,
 });
 
+/* ── Navigation ── */
+
 const NAV_LINKS = [
-  { to: "/analyzer", label: "Analyzer" },
-  { to: "/optimizer", label: "Optimizer" },
-  { to: "/career", label: "Job Analyzer" },
-  { to: "/roadmap", label: "DSA Roadmap" },
-  { to: "/interview", label: "Mock Interview" },
+  { to: "#features-strip", label: "Features", isAnchor: true },
+  { to: "/optimizer", label: "Solutions", isAnchor: false },
+  { to: "/roadmap", label: "Roadmap", isAnchor: false },
+  { to: "/benchmark", label: "Pricing", isAnchor: false },
+  { to: "/history", label: "Blog", isAnchor: false },
 ] as const;
+
+const FEATURE_STRIP_ITEMS = [
+  { to: "/analyzer", label: "Code Analyzer", icon: Terminal },
+  { to: "/optimizer", label: "Solution Optimizer", icon: Sparkles },
+  { to: "/converter", label: "Language Converter", icon: Braces },
+  { to: "/roadmap", label: "DSA Roadmap", icon: RouteIcon },
+  { to: "/interview", label: "Mock Interview", icon: MessagesSquare },
+  { to: "/progress", label: "Progress & DNA", icon: Activity },
+] as const;
+
+/* ── Existing section data (preserved) ── */
 
 const FEATURE_LINKS = [
   { to: "/analyzer", label: "Code Analyzer" },
@@ -173,6 +186,8 @@ return best`,
   },
 };
 
+/* ── Helpers ── */
+
 function Reveal({ children, className }: { children: ReactNode; className?: string }) {
   const { ref, visible } = useScrollReveal<HTMLDivElement>(0.12);
   return (
@@ -182,15 +197,34 @@ function Reveal({ children, className }: { children: ReactNode; className?: stri
   );
 }
 
+/* ── Redesigned Navbar ── */
+
 function LandingHeader() {
   const [compact, setCompact] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    const updateScrollState = () => setCompact(window.scrollY > 72);
-    updateScrollState();
+    let rafId = 0;
+    let lastCompact = window.scrollY > 48;
+    setCompact(lastCompact);
+
+    const updateScrollState = () => {
+      if (rafId) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        const next = window.scrollY > 48;
+        if (next !== lastCompact) {
+          lastCompact = next;
+          setCompact(next);
+        }
+      });
+    };
+
     window.addEventListener("scroll", updateScrollState, { passive: true });
-    return () => window.removeEventListener("scroll", updateScrollState);
+    return () => {
+      window.removeEventListener("scroll", updateScrollState);
+      if (rafId) window.cancelAnimationFrame(rafId);
+    };
   }, []);
 
   return (
@@ -198,29 +232,33 @@ function LandingHeader() {
       <div className="landing-nav__inner">
         <div className="landing-nav__brand">
           <Link to="/" className="landing-brand" aria-label="CodeMate home">
-            <span className="landing-brand__mark" aria-hidden="true">
-              {"{}"}
-            </span>
+            <CodeMateMark size={28} tone="light" />
             <span>
               CodeMate<span className="landing-brand__suffix"> AI</span>
             </span>
           </Link>
           <nav className="landing-nav__links" aria-label="Product navigation">
-            {NAV_LINKS.map((item) => (
-              <Link key={item.to} to={item.to}>
-                {item.label}
-              </Link>
-            ))}
+            {NAV_LINKS.map((item) =>
+              item.isAnchor ? (
+                <a key={item.to} href={item.to}>
+                  {item.label}
+                </a>
+              ) : (
+                <Link key={item.to} to={item.to}>
+                  {item.label}
+                </Link>
+              ),
+            )}
           </nav>
         </div>
 
         <div className="landing-nav__actions">
           <Link className="landing-nav__signin" to="/login">
-            Sign in
+            Log in
           </Link>
           <Link className="landing-nav__cta" to="/dashboard">
             <span>Open CodeMate</span>
-            <ArrowUpRight size={15} aria-hidden="true" />
+            <ArrowRight size={14} aria-hidden="true" />
           </Link>
           <button
             type="button"
@@ -242,9 +280,10 @@ function LandingHeader() {
           aria-label="Mobile navigation"
         >
           {[
-            ...NAV_LINKS,
-            { to: "/progress", label: "Progress & DNA" },
-            { to: "/history", label: "History" },
+            ...NAV_LINKS.filter((n) => !n.isAnchor),
+            { to: "/analyzer", label: "Code Analyzer", isAnchor: false },
+            { to: "/progress", label: "Progress & DNA", isAnchor: false },
+            { to: "/history", label: "History", isAnchor: false },
           ].map((item) => (
             <Link key={item.to} to={item.to} onClick={() => setMobileMenuOpen(false)}>
               {item.label}
@@ -261,36 +300,70 @@ function LandingHeader() {
   );
 }
 
+/* ── 3D Hanging Objects Scene ── */
+
 function HeroObjectScene() {
   const sceneRef = useRef<HTMLDivElement>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
 
-  function moveScene(event: PointerEvent<HTMLDivElement>) {
+  useEffect(() => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion) return;
+
+    let rafId = 0;
+    const onScroll = () => {
+      if (rafId) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        const wrap = sceneRef.current?.parentElement;
+        if (!wrap) return;
+        const clamped = Math.min(window.scrollY, 500);
+        wrap.style.setProperty("--scene-scroll-y", `${-clamped * 0.08}px`);
+      });
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (rafId) window.cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+  const toggleTouchTile = useCallback((id: string) => {
+    setHovered((prev) => (prev === id ? null : id));
+  }, []);
+
+  const moveScene = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "touch") return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const x = (event.clientX - bounds.left) / bounds.width - 0.5;
     const y = (event.clientY - bounds.top) / bounds.height - 0.5;
     const style = event.currentTarget.style;
-    style.setProperty("--scene-rotate-x", `${-y * 3.5}deg`);
-    style.setProperty("--scene-rotate-y", `${x * 5}deg`);
-    style.setProperty("--scene-shift-x", `${x * 5}px`);
-    style.setProperty("--scene-shift-y", `${y * 4}px`);
-    style.setProperty("--swing-left", `${x * 3.2}deg`);
-    style.setProperty("--swing-right", `${-x * 2.6}deg`);
+    style.setProperty("--scene-rotate-x", `${-y * 3}deg`);
+    style.setProperty("--scene-rotate-y", `${x * 4.5}deg`);
+    style.setProperty("--scene-shift-x", `${x * 4}px`);
+    style.setProperty("--scene-shift-y", `${y * 3}px`);
+    style.setProperty("--swing-left", `${x * 2.8}deg`);
+    style.setProperty("--swing-right", `${-x * 2.2}deg`);
+    style.setProperty("--swing-center", `${x * 1.6}deg`);
     style.setProperty("--highlight-x", `${50 + x * 24}%`);
     style.setProperty("--highlight-y", `${35 + y * 18}%`);
-  }
+  }, []);
 
-  function resetScene() {
+  const resetScene = useCallback(() => {
     const style = sceneRef.current?.style;
-    style?.setProperty("--scene-rotate-x", "0deg");
-    style?.setProperty("--scene-rotate-y", "0deg");
-    style?.setProperty("--scene-shift-x", "0px");
-    style?.setProperty("--scene-shift-y", "0px");
-    style?.setProperty("--swing-left", "0deg");
-    style?.setProperty("--swing-right", "0deg");
-    style?.setProperty("--highlight-x", "50%");
-    style?.setProperty("--highlight-y", "35%");
-  }
+    if (!style) return;
+    style.setProperty("--scene-rotate-x", "0deg");
+    style.setProperty("--scene-rotate-y", "0deg");
+    style.setProperty("--scene-shift-x", "0px");
+    style.setProperty("--scene-shift-y", "0px");
+    style.setProperty("--swing-left", "0deg");
+    style.setProperty("--swing-right", "0deg");
+    style.setProperty("--swing-center", "0deg");
+    style.setProperty("--highlight-x", "50%");
+    style.setProperty("--highlight-y", "35%");
+    setHovered(null);
+  }, []);
 
   return (
     <div
@@ -302,11 +375,68 @@ function HeroObjectScene() {
     >
       <div className="hero-object-scene__aura" />
       <div className="hero-object-scene__shadow" />
-      <div className="hero-glass-brackets">
-        <span>{"{"}</span>
-        <span>{"}"}</span>
+      <div className="hero-keyring" />
+
+      {/* Central sculpted 3D emerald brackets — main focus */}
+      <div className="hero-pendant hero-pendant--center">
+        <div className="hero-chain hero-chain--thick">
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+        </div>
+        <div
+          className={`hero-bracket-sculpture${hovered === "center" ? " hero-tile--hovered" : ""}`}
+          onPointerEnter={(e) => e.pointerType !== "touch" && setHovered("center")}
+          onPointerLeave={(e) => e.pointerType !== "touch" && setHovered(null)}
+          onClick={() => toggleTouchTile("center")}
+        >
+          <span className="hero-bracket-sculpture__back" aria-hidden="true">
+            {"{ }"}
+          </span>
+          <span className="hero-bracket-sculpture__mid" aria-hidden="true">
+            {"{ }"}
+          </span>
+          <span className="hero-bracket-sculpture__front">{"{ }"}</span>
+        </div>
       </div>
 
+      {/* Code tile — left */}
+      <div className="hero-pendant hero-pendant--code">
+        <div className="hero-chain">
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+        </div>
+        <div
+          className={`hero-code-tile${hovered === "code" ? " hero-tile--hovered" : ""}`}
+          onPointerEnter={(e) => e.pointerType !== "touch" && setHovered("code")}
+          onPointerLeave={(e) => e.pointerType !== "touch" && setHovered(null)}
+          onClick={() => toggleTouchTile("code")}
+        >
+          <span className="hero-code-tile__reflection" />
+          <span className="hero-code-tile__symbol">{"</>"}</span>
+        </div>
+      </div>
+
+      {/* AI tile — left-center */}
       <div className="hero-pendant hero-pendant--ai">
         <div className="hero-chain">
           <i />
@@ -316,85 +446,110 @@ function HeroObjectScene() {
           <i />
           <i />
           <i />
+          <i />
         </div>
-        <div className="hero-metal-tile">
+        <div
+          className={`hero-metal-tile${hovered === "ai" ? " hero-tile--hovered" : ""}`}
+          onPointerEnter={(e) => e.pointerType !== "touch" && setHovered("ai")}
+          onPointerLeave={(e) => e.pointerType !== "touch" && setHovered(null)}
+          onClick={() => toggleTouchTile("ai")}
+        >
           <span className="hero-metal-tile__shine" />
           <span className="hero-metal-tile__letters">AI</span>
-          <span className="hero-metal-tile__caption">INTELLIGENCE</span>
         </div>
       </div>
 
-      <div className="hero-pendant hero-pendant--code">
-        <div className="hero-chain">
+      {/* Processor chip — right-center */}
+      <div className="hero-pendant hero-pendant--chip">
+        <div className="hero-chain hero-chain--fine">
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
           <i />
           <i />
           <i />
           <i />
           <i />
         </div>
-        <div className="hero-code-tile">
-          <span className="hero-code-tile__reflection" />
-          <span className="hero-code-tile__symbol">{"</>"}</span>
-          <span className="hero-code-tile__caption">CODE / 01</span>
+        <div
+          className={`hero-processor${hovered === "chip" ? " hero-tile--hovered" : ""}`}
+          onPointerEnter={(e) => e.pointerType !== "touch" && setHovered("chip")}
+          onPointerLeave={(e) => e.pointerType !== "touch" && setHovered(null)}
+          onClick={() => toggleTouchTile("chip")}
+        >
+          <div className="hero-processor__pins" />
+          <div className="hero-processor__body">
+            <div className="hero-processor__core">
+              <div className="hero-processor__dots">
+                <i /><i /><i /><i />
+                <i /><i /><i /><i />
+                <i /><i /><i /><i />
+                <i /><i /><i /><i />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="hero-processor">
-        <div className="hero-processor__pins" />
-        <div className="hero-processor__body">
-          <span className="hero-processor__maker">CODEMATE</span>
-          <span className="hero-processor__core">∴</span>
-          <span className="hero-processor__label">ALGORITHM / 01</span>
+      {/* Play button tile — far right */}
+      <div className="hero-pendant hero-pendant--play">
+        <div className="hero-chain hero-chain--fine">
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
         </div>
-      </div>
-
-      <div className="hero-algorithm-chip">
-        <span className="hero-algorithm-chip__edge" />
-        <span>O(n)</span>
+        <div
+          className={`hero-play-tile${hovered === "play" ? " hero-tile--hovered" : ""}`}
+          onPointerEnter={(e) => e.pointerType !== "touch" && setHovered("play")}
+          onPointerLeave={(e) => e.pointerType !== "touch" && setHovered(null)}
+          onClick={() => toggleTouchTile("play")}
+        >
+          <span className="hero-play-tile__glow" />
+          <span className="hero-play-tile__icon">▶</span>
+        </div>
       </div>
     </div>
   );
 }
 
-function FeatureMarquee() {
-  const marqueeRef = useRef<HTMLDivElement>(null);
-  const [inView, setInView] = useState(false);
-  const [scrolling, setScrolling] = useState(false);
+/* ── Feature Strip ── */
 
-  useEffect(() => {
-    const element = marqueeRef.current;
-    if (!element) return;
-    const observer = new IntersectionObserver(([entry]) =>
-      setInView(entry?.isIntersecting ?? false),
-    );
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reducedMotion) return;
-    let timer: number | undefined;
-    const onScroll = () => {
-      if (!inView) return;
-      setScrolling(true);
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => setScrolling(false), 200);
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.clearTimeout(timer);
-    };
-  }, [inView]);
-
-  const style: CSSProperties & { [key: `--${string}`]: string } = {
-    "--feature-marquee-duration": scrolling ? "22s" : "42s",
-    "--feature-marquee-state": inView ? "running" : "paused",
-  };
-
+function FeatureStrip() {
   return (
-    <div ref={marqueeRef} className="feature-marquee" style={style} aria-label="CodeMate features">
+    <div className="feature-strip" id="features-strip">
+      <div className="feature-strip__inner">
+        <p className="feature-strip__tagline">Everything you need to grow as a developer.</p>
+        <div className="feature-strip__items">
+          {FEATURE_STRIP_ITEMS.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link key={item.to} to={item.to} className="feature-strip__item">
+                <Icon size={14} className="feature-strip__icon" aria-hidden="true" />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Existing Sections (preserved) ── */
+
+function FeatureMarquee() {
+  return (
+    <div className="feature-marquee" aria-label="CodeMate features">
       <div className="feature-marquee__track">
         {[...FEATURE_LINKS, ...FEATURE_LINKS].map((item, index) => {
           const duplicate = index >= FEATURE_LINKS.length;
@@ -747,51 +902,48 @@ function ToolList({
   );
 }
 
+/* ── Main Landing Page ── */
+
 function LandingPage() {
   return (
     <div className="landing-page">
       <LandingHeader />
       <main>
+        {/* ── Hero Section ── */}
         <section className="landing-hero">
           <div className="landing-hero__grain" aria-hidden="true" />
-          <div className="landing-hero__scene-wrap">
-            <HeroObjectScene />
-          </div>
-          <div className="landing-hero__lower">
-            <div className="landing-hero__headline">
-              <p className="eyebrow landing-hero__eyebrow">
-                Code intelligence <span aria-hidden="true">/</span> Interview practice
-              </p>
-              <h1>
-                Think in
-                <br />
-                <span>Algorithms.</span>
-              </h1>
+
+          {/* Hero content: hanging 3D artwork top-center, headline left, CTA right */}
+          <div className="landing-hero__content">
+            <div className="landing-hero__scene-wrap">
+              <HeroObjectScene />
             </div>
-            <div className="landing-hero__aside">
-              <p className="landing-hero__description">
-                Write better code, understand your solutions, and prepare for the interviews that
-                matter.
-              </p>
-              <div className="landing-hero__actions">
-                <Link to="/dashboard" className="button-primary">
-                  Open CodeMate
-                  <ArrowUpRight size={17} aria-hidden="true" />
-                </Link>
-                <Link to="/interview" className="button-quiet">
-                  Explore Mock Interview
-                  <ArrowUpRight size={16} aria-hidden="true" />
-                </Link>
+
+            <div className="landing-hero__text">
+              <div className="landing-hero__headline">
+                <h1>
+                  Think in
+                  <br />
+                  <span>Algorithms.</span>
+                </h1>
+              </div>
+              <div className="landing-hero__aside">
+                <p className="landing-hero__description">
+                  Write better code, understand your solutions, and prepare for the interviews that
+                  matter.
+                </p>
+                <div className="landing-hero__actions">
+                  <Link to="/dashboard" className="button-primary">
+                    Open CodeMate
+                    <ArrowRight size={17} aria-hidden="true" />
+                  </Link>
+                </div>
               </div>
             </div>
           </div>
-          <a className="landing-hero__scroll" href="#capabilities">
-            <span>Explore the workspace</span>
-            <ArrowDown size={16} aria-hidden="true" />
-          </a>
-          <div className="landing-hero__index" aria-hidden="true">
-            CM / 01
-          </div>
+
+          {/* Feature strip at the bottom of hero */}
+          <FeatureStrip />
         </section>
 
         <section id="capabilities" className="capabilities-section">
@@ -854,45 +1006,7 @@ function LandingPage() {
             />
           </div>
         </section>
-
-        <section className="landing-cta">
-          <div className="landing-cta__mark" aria-hidden="true">
-            {"{ }"}
-          </div>
-          <p className="eyebrow">Your next idea starts here</p>
-          <h2>
-            Make the reasoning
-            <br />
-            part of the result.
-          </h2>
-          <p>
-            Bring your code, your questions, and your next interview goal into one focused
-            workspace.
-          </p>
-          <Link to="/dashboard" className="button-primary button-primary--light">
-            Open CodeMate
-            <ArrowUpRight size={17} aria-hidden="true" />
-          </Link>
-        </section>
       </main>
-
-      <footer className="landing-footer">
-        <Link to="/" className="landing-brand">
-          <span className="landing-brand__mark" aria-hidden="true">
-            {"{}"}
-          </span>
-          <span>
-            CodeMate<span className="landing-brand__suffix"> AI</span>
-          </span>
-        </Link>
-        <p>Code intelligence. Interview preparation. Engineering growth.</p>
-        <div className="landing-footer__links">
-          <Link to="/dashboard">Workspace</Link>
-          <Link to="/history">History</Link>
-          <Link to="/login">Sign in</Link>
-        </div>
-        <span className="landing-footer__copyright">© {new Date().getFullYear()} CodeMate</span>
-      </footer>
     </div>
   );
 }

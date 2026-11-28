@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Braces, Check, Eye, EyeOff, KeyRound, Mail } from "lucide-react";
+import { ArrowRight, Check, Eye, EyeOff, KeyRound, Mail } from "lucide-react";
+import { CodeMateMark } from "@/components/brand/CodeMateLogo";
 import {
   getCurrentUser,
   getGoogleOAuthStatus,
@@ -157,9 +158,7 @@ export function AuthPage({
       <div className="auth-page__depth" aria-hidden="true" />
       <header className="auth-header">
         <Link to="/" className="auth-brand" aria-label="CodeMate home">
-          <span className="auth-brand__mark">
-            <Braces size={18} strokeWidth={2.2} />
-          </span>
+          <CodeMateMark size={34} tone="dark" />
           <span className="auth-brand__name">
             CodeMate<span> AI</span>
           </span>

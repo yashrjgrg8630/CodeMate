@@ -3,6 +3,7 @@ import { Check, Copy, Loader2, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CodeMateMark } from "@/components/brand/CodeMateLogo";
 
 export function PageHeader({
   title,
@@ -67,13 +68,19 @@ export function StatCard({
 
 export function LoadingState({ label = "Working…" }: { label?: string }) {
   return (
-    <div className="flex items-center gap-3.5 rounded-2xl liquid-glass px-5 py-4 text-sm text-foreground">
-      <div className="relative flex size-6 items-center justify-center rounded-lg bg-emerald-500/15 border border-emerald-500/25">
-        <Loader2 className="size-3.5 animate-spin text-emerald-400" />
+    <div className="flex items-center gap-3.5 rounded-xl border border-white/[0.08] bg-[#121619]/95 px-5 py-4 text-sm text-[#f3f4f2] shadow-[0_12px_32px_rgba(0,0,0,0.36)]">
+      <div className="relative flex items-center justify-center">
+        <CodeMateMark size={30} tone="dark" />
+        <span
+          aria-hidden="true"
+          className="absolute -bottom-1 -right-1 flex size-4 items-center justify-center rounded-full border border-[#121619] bg-[#162820]"
+        >
+          <Loader2 className="size-2.5 animate-spin text-emerald-400" />
+        </span>
       </div>
       <div className="space-y-0.5">
-        <p className="font-medium text-sm">{label}</p>
-        <p className="font-code text-[11px] text-muted-foreground">
+        <p className="font-medium text-sm text-[#f3f4f2]">{label}</p>
+        <p className="font-code text-[11px] text-[#7a828a]">
           Running in the background — feel free to switch pages.
         </p>
       </div>

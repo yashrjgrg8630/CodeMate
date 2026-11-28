@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -15,6 +15,7 @@ import {
   Settings,
   Sparkles,
   Terminal,
+  type LucideIcon,
 } from "lucide-react";
 import {
   Sidebar,
@@ -35,6 +36,7 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { LoadingState } from "@/components/app/shared";
 import { AuthPage } from "@/components/app/AuthPage";
+import { CodeMateLogo } from "@/components/brand/CodeMateLogo";
 import { getCurrentUser, logout } from "@/services/authService";
 import { cn } from "@/lib/utils";
 
@@ -68,6 +70,74 @@ const ROUTE_LABELS: Record<string, string> = {
   "/progress": "Progress & DNA",
   "/settings": "Settings",
 };
+
+interface NavItemConfig {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+function SidebarNavGroup({
+  label,
+  items,
+  pathname,
+}: {
+  label: string;
+  items: readonly NavItemConfig[];
+  pathname: string;
+}) {
+  return (
+    <SidebarGroup className="p-0">
+      <SidebarGroupLabel className="mb-1.5 h-auto px-2.5 font-sans text-[10px] font-semibold uppercase tracking-[0.14em] text-[#5e656d] group-data-[collapsible=icon]:hidden">
+        {label}
+      </SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu className="gap-1">
+          {items.map((item) => {
+            const isActive = pathname === item.to;
+            return (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isActive}
+                  tooltip={item.label}
+                  className={cn(
+                    "group/nav relative h-9 rounded-lg px-2.5 transition-[background-color,color,border-color] duration-150",
+                    "group-data-[collapsible=icon]:!size-9 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center",
+                    isActive
+                      ? "!bg-[#132019] !text-[#f3f4f2] font-medium border border-emerald-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] hover:!bg-[#16261d]"
+                      : "text-[#8e959e] border border-transparent hover:bg-white/[0.04] hover:text-[#eef0ec]",
+                  )}
+                >
+                  <Link to={item.to} className="flex items-center gap-2.5">
+                    {isActive ? (
+                      <span
+                        aria-hidden="true"
+                        className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[2.5px] rounded-r-full bg-emerald-400 group-data-[collapsible=icon]:hidden"
+                      />
+                    ) : null}
+                    <item.icon
+                      strokeWidth={1.75}
+                      className={cn(
+                        "size-4 shrink-0 transition-[color,transform] duration-150",
+                        isActive
+                          ? "text-emerald-400"
+                          : "text-[#6e757e] group-hover/nav:text-[#d4d8dc] group-hover/nav:translate-x-[1px]",
+                      )}
+                    />
+                    <span className="truncate text-[13px] tracking-[-0.01em] group-data-[collapsible=icon]:hidden">
+                      {item.label}
+                    </span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
 
 function AmbientCanvas() {
   return (
@@ -153,105 +223,62 @@ export function AppShell() {
 
   return (
     <div className="workspace-shell">
-      <SidebarProvider>
+      <SidebarProvider
+        style={
+          {
+            "--sidebar-width": "15.5rem",
+            "--sidebar-width-icon": "3.75rem",
+          } as CSSProperties
+        }
+      >
         <AmbientCanvas />
 
         <Sidebar
           collapsible="icon"
-          className="relative z-20 border-r border-white/[0.07] bg-[#10151b] shadow-[10px_0_30px_rgba(0,0,0,0.12)]"
+          className="relative z-20 border-r border-white/[0.06] bg-[#0f1215]"
         >
-          <SidebarHeader className="border-b border-white/[0.08] px-3 py-3.5">
-            <Link to="/" className="flex items-center gap-2.5 px-1 py-0.5 group">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-[#aebcff]/20 bg-[#aebcff]/[0.08] font-code text-xs font-semibold text-[#b8c5ff] transition-transform duration-200 group-hover:scale-105">
-                {"{}"}
-              </div>
-              <div className="flex flex-col group-data-[collapsible=icon]:hidden">
-                <span className="font-headline text-sm font-semibold tracking-tight text-white">
-                  CodeMate<span className="text-[#b8c5ff] ml-0.5">AI</span>
-                </span>
-                <span className="font-code text-[10px] text-zinc-400">Studio Workspace</span>
-              </div>
+          <SidebarHeader className="border-b border-white/[0.05] px-3.5 py-4 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-3.5">
+            <Link
+              to="/"
+              aria-label="CodeMate AI home"
+              className="group/brand flex items-center rounded-lg px-0.5 py-0.5 transition-opacity duration-150 hover:opacity-90 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+            >
+              <CodeMateLogo
+                size={32}
+                tone="dark"
+                subtitle="Studio Workspace"
+                className="group-data-[collapsible=icon]:hidden"
+              />
+              <CodeMateLogo
+                size={32}
+                tone="dark"
+                compact
+                className="hidden group-data-[collapsible=icon]:inline-flex"
+              />
             </Link>
           </SidebarHeader>
 
-          <SidebarContent className="px-2.5 py-3 space-y-5">
-            <SidebarGroup>
-              <SidebarGroupLabel className="px-2 font-code text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-500">
-                Code Intelligence
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu className="space-y-0.5">
-                  {CODE_NAV.map((item) => {
-                    const isActive = pathname === item.to;
-                    return (
-                      <SidebarMenuItem key={item.to}>
-                        <SidebarMenuButton
-                          asChild
-                          isActive={isActive}
-                          tooltip={item.label}
-                          className={cn(
-                            "rounded-xl transition-all duration-200",
-                            isActive
-                              ? "bg-[#aebcff]/[0.1] text-white font-medium border border-[#aebcff]/[0.16] hover:bg-[#aebcff]/[0.14]"
-                              : "text-zinc-400 border border-transparent hover:bg-white/[0.05] hover:text-zinc-100",
-                          )}
-                        >
-                          <Link to={item.to}>
-                            <item.icon className={cn("size-4", isActive ? "text-[#b8c5ff]" : "")} />
-                            <span className="text-[13px]">{item.label}</span>
-                          </Link>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    );
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-
-            <SidebarGroup>
-              <SidebarGroupLabel className="px-2 font-code text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-500">
-                Career &amp; Prep
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu className="space-y-0.5">
-                  {CAREER_NAV.map((item) => {
-                    const isActive = pathname === item.to;
-                    return (
-                      <SidebarMenuItem key={item.to}>
-                        <SidebarMenuButton
-                          asChild
-                          isActive={isActive}
-                          tooltip={item.label}
-                          className={cn(
-                            "rounded-xl transition-all duration-200",
-                            isActive
-                              ? "bg-[#aebcff]/[0.1] text-white font-medium border border-[#aebcff]/[0.16] hover:bg-[#aebcff]/[0.14]"
-                              : "text-zinc-400 border border-transparent hover:bg-white/[0.05] hover:text-zinc-100",
-                          )}
-                        >
-                          <Link to={item.to}>
-                            <item.icon className={cn("size-4", isActive ? "text-[#b8c5ff]" : "")} />
-                            <span className="text-[13px]">{item.label}</span>
-                          </Link>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    );
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+          <SidebarContent className="gap-6 overflow-x-hidden px-3 py-5 group-data-[collapsible=icon]:px-2">
+            <SidebarNavGroup label="Code Intelligence" items={CODE_NAV} pathname={pathname} />
+            <SidebarNavGroup label="Career & Prep" items={CAREER_NAV} pathname={pathname} />
           </SidebarContent>
 
-          <SidebarFooter className="border-t border-white/[0.08] p-2.5">
+          <SidebarFooter className="border-t border-white/[0.05] p-3 group-data-[collapsible=icon]:px-2">
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Back to Landing" className="rounded-xl">
-                  <Link
-                    to="/"
-                    className="text-zinc-400 hover:text-white hover:bg-white/[0.05] transition-colors"
-                  >
-                    <ArrowLeft className="size-4" />
-                    <span className="text-xs font-medium">Back to Landing</span>
+                <SidebarMenuButton
+                  asChild
+                  tooltip="Back to Landing"
+                  className="group/back h-9 rounded-lg px-2.5 text-[#7a828a] transition-[background-color,color] duration-150 hover:bg-white/[0.04] hover:text-[#f3f4f2] group-data-[collapsible=icon]:!size-9 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center"
+                >
+                  <Link to="/" className="flex items-center gap-2.5">
+                    <ArrowLeft
+                      strokeWidth={1.75}
+                      className="size-4 shrink-0 transition-transform duration-150 group-hover/back:-translate-x-0.5"
+                    />
+                    <span className="truncate text-[12.5px] font-medium tracking-[-0.01em] group-data-[collapsible=icon]:hidden">
+                      Back to Landing
+                    </span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
